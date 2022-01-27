@@ -1,4 +1,4 @@
-// Handles all config duties. Inspired by https://github.com/dunglas/mercure
+// Package config Handles all config duties. Inspired by https://github.com/dunglas/mercure
 package config
 
 import (
@@ -100,13 +100,14 @@ func InitConfig() *viper.Viper {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_")) // env vars cannot contain .
 	v.AutomaticEnv()
 
+	// Find config.yaml in ./, $CONFIGPATH/nakji/, ~/.config/nakji/, and /etc/nakji/
 	v.AddConfigPath(".")
 	configPath := os.Getenv("CONFIGPATH")
 	if configPath == "" {
 		configPath = "$HOME/.config"
 	}
-	v.AddConfigPath(configPath + "/blep/")
-	v.AddConfigPath("/etc/blep/")
+	v.AddConfigPath(configPath + "/nakji/")
+	v.AddConfigPath("/etc/nakji/")
 
 	// Adds root directory to config path
 	_, b, _, _ := runtime.Caller(0)

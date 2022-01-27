@@ -1,0 +1,10 @@
+log:
+  level: debug
+  format: console
+kafka:
+  url: localhost:9092
+  env: staging
+rpcs:
+  ethereum:
+    full:
+      - your infura websocket endpoint here
