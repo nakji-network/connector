@@ -6,13 +6,13 @@ GOBASE := $(shell pwd)
 GOBIN := $(GOBASE)/bin
 
 # Use linker flags to provide version/build settings
-LDFLAGS_MOD="blep.ai/data/config"
+LDFLAGS_MOD="github.com/nakji-network/connector/config"
 LDFLAGS=-ldflags "-X=$(LDFLAGS_MOD).Version=$(VERSION) -X=$(LDFLAGS_MOD).Build=$(BUILD) -X=$(LDFLAGS_MOD).BuildTime=$(shell date '+%s') -s -w" #remove debugger info for smaller binaries
 
 PROTO_FILES = $(shell find . -type f -name '*.proto')
 PBGO_FILES = $(patsubst %.proto,%.pb.go,$(PROTO_FILES))
 GRPC_FILES = $(patsubst %.proto,%_grpc.pb.go,$(PROTO_FILES))
-APPS = $(shell find . -path "*/cmd/*/main.go" | sed -E "s/\\/main\.go//" | xargs -I {} basename {}) #all app names
+APPS = $(shell find . -path "./cmd/*/main.go" | sed -E "s/\\/main\.go//" | xargs -I {} basename {}) #all app names
 
 .PHONY: all $(APPS) docker-all list help
 
@@ -27,7 +27,7 @@ all: $(PBGO_FILES)
 
 ## start-<app>: Run app without compiling
 start-%: $(PBGO_FILES)
-	$(eval APATH := $(shell find . -path "*/*/cmd/$*/main.go"))
+	$(eval APATH := $(shell find . -path "./cmd/$*/main.go"))
 	# commented out because I included the abi.go files in the repo
 	# @test -f $(dir $(APATH))../init_connector.sh && \
 		#echo "Running init_connector.sh" && \
@@ -40,10 +40,7 @@ endif
 
 ## <app>: Build app
 $(APPS): $(PBGO_FILES)
-	$(eval APATH := $(shell find . -path "*/*/cmd/$@/main.go"))
-	# @test -f $(dir $(APATH))../init_connector.sh && \
-		#echo "Running init_connector.sh" && \
-		#$(dir $(APATH))../init_connector.sh || true
+	$(eval APATH := $(shell find . -path "./cmd/$@/main.go"))
 	go build $(LDFLAGS) -o bin/$@ $(APATH)
 
 ## docker-all: Build docker image for all apps

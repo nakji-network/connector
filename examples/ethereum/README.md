@@ -6,4 +6,7 @@ Ethereum is open access to digital money and data-friendly services for everyone
 ## How to run
 This connector requires Kafka to be running, and a config.yaml file containing Kafka endpoints and Ethereum RPC endpoints.
 
-    go run cmd/ethereum/main.go
+Install Protobuf for Golang by following this: https://developers.google.com/protocol-buffers/docs/gotutorial
+
+    # run protobuf compiler and go run
+    make start-ethereum
