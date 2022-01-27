@@ -1,7 +1,4 @@
-// This connector ingests real time data from any EVM compatible chain. After
-// compiling this program, you can specify which chain to connect to as follows:
-//
-//     bin/ethereum -n avalanche
+// This connector ingests real time data from any EVM compatible chain.
 package main
 
 import (
