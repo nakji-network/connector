@@ -1,23 +1,14 @@
 This is a library to help anyone integrate a new data source (aka connector) with [Nakji Network](https://nakji.network).
 
-Ideas: 
+The library handles: 
 
+- Connector boilerplate
+- Getting configs
+- Publishing and Subscribing to the Nakji message queue
+- Initializing monitoring
 
-The library should deal with:
+Connector examples are in [examples/](examples).
 
-config
-- Config from centralized place. Can get global config values as well as connector specific values
+You can read more documentation on this library in the [Nakji Documentation](https://docs.nakji.network).
 
-message queue
-- Kafka Producer / Consumer, kafka utils
-- stream names, topic names
-
-monitor
-
-manifest
-- Prints diagnostic info / monitor based on manifest.yaml
-
-examples
-
-proto
-- Prints protobufs? Register proto types
+TODO: godoc badge and publish
