@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package kafkautils;
+
+option go_package = "blep.ai/data/kafkautils";
+
+message Petersilie {
+  int32 name = 1;
+}

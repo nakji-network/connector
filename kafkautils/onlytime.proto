@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package kafkautils;
+
+option go_package = "blep.ai/data/kafkautils";
+
+// This is for unmarshaling all proto messages to get timestamp. Requires all other proto definitions to have Timestamp in index 1
+message OnlyTime {
+	google.protobuf.Timestamp  Timestamp = 1;
+}	
