@@ -10,5 +10,7 @@ Ethereum is open access to digital money and data-friendly services for everyone
 - Update local.yaml with appropriate values
 - Protobuf (Install Protobuf for Golang by following this: https://developers.google.com/protocol-buffers/docs/gotutorial)
 
-    # runs protobuf compiler and go run
-    make start-ethereum
+```shell
+# runs protobuf compiler and go run
+make start-ethereum
+```
