@@ -9,13 +9,12 @@ import (
 )
 
 type manifest struct {
-	Name string
-	Author string
+	Name    string
+	Author  string
 	Version version
 }
 
 // TODO: tell user to use embed to embed the manifest.yaml file or else they'll have to manually keep the file with the exe
-
 
 func LoadManifest() *manifest {
 	log.Info().Msg("Loading Manifest")
@@ -30,6 +29,10 @@ func LoadManifest() *manifest {
 	err2 := yaml.Unmarshal(yfile, m)
 	if err2 != nil {
 		log.Fatal().Err(err2).Msg("Failed to read yaml from manifest.yaml.")
+	}
+
+	if m.Name == "" || m.Author == "" || m.Version.Version == nil {
+		log.Fatal().Msg("Missing name, author, and version fields from manifest.yaml.")
 	}
 
 	log.Info().

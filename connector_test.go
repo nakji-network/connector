@@ -10,9 +10,9 @@ func TestGenerateTopicFromProto(t *testing.T) {
 	v, _ := semver.NewVersion("0.0.0")
 	c := Connector{
 		manifest: &manifest{
-			name: "ethereum",
-			author: "nakji",
-			version: version{Version: v},
+			Name:    "ethereum",
+			Author:  "nakji",
+			Version: version{Version: v},
 		},
 	}
 	got := c.GenerateTopicFromProto(&Transaction{})
