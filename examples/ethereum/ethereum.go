@@ -9,15 +9,13 @@ import (
 	"os/signal"
 
 	"github.com/ethereum/go-ethereum/core/types"
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/rs/zerolog/log"
-
 	"github.com/nakji-network/connector"
+	"github.com/rs/zerolog/log"
 )
 
 type EthereumConnector struct {
-	*connector.Connector
+	*connector.Connector // embed Nakji connector.Connector into your custom connector to get access to all its methods
 
 	RPCURL string
 }
@@ -36,7 +34,7 @@ func (c *EthereumConnector) Start() {
 	defer client.Close()
 
 	// Subscribe to headers
-  headers := make(chan *types.Header)
+	headers := make(chan *types.Header)
 	sub, err := client.SubscribeNewHead(context.Background(), headers)
 	if err != nil {
 		log.Fatal().Err(err)
@@ -110,7 +108,7 @@ func (c *EthereumConnector) Start() {
 	}
 }
 
-func PrintBlock(block *ethtypes.Block) {
+func PrintBlock(block *types.Block) {
 	fmt.Printf("hash: %s\n", block.Hash().Hex())       // 0xbc10defa8dda384c96a17640d84de5578804945d347072e091b4e5f390ddea7f
 	fmt.Printf("num: %v\n", block.Number().Uint64())   // 3477413
 	fmt.Printf("time: %v\n", block.Time())             // 1529525947

@@ -1,5 +1,7 @@
 # Ethereum Connector
 
+This is the example connector used at https://docs.nakji.network.
+
 ## Ethereum
 Ethereum is open access to digital money and data-friendly services for everyone – no matter your background or location. It's a community-built technology behind the cryptocurrency ether (ETH) and thousands of applications you can use today.
 
