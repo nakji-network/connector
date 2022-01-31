@@ -2,8 +2,6 @@
 package main
 
 import (
-	"context"
-
 	"github.com/nakji-network/connector"
 	"github.com/nakji-network/connector/examples/ethereum"
 )
@@ -14,10 +12,9 @@ func main() {
 	ethConnector := ethereum.EthereumConnector{
 		Connector: c,
 
-		// connect to Ethereum RPC
-		Client: c.ChainClients.Ethereum(context.Background()),
+		// Any additional custom connections not supported natively by Nakji
+		// Client: c.ChainClients.Ethereum(context.Background()),
 	}
-	defer ethConnector.Client.Close()
 
 	ethConnector.Start()
 }
