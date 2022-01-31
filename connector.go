@@ -2,9 +2,11 @@ package connector
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/heptiolabs/healthcheck"
 	"github.com/nakji-network/connector/chain"
 	"github.com/nakji-network/connector/config"
 	"github.com/nakji-network/connector/kafkautils"
@@ -17,6 +19,7 @@ import (
 type Connector struct {
 	manifest *manifest
 	Config   *viper.Viper
+	Health   healthcheck.Handler
 
 	kafkaUrl        string
 	producerStarted bool
@@ -41,6 +44,7 @@ func NewConnector() *Connector {
 		manifest:     LoadManifest(),
 		kafkaUrl:     conf.GetString("kafka.url"),
 		ChainClients: chain.NewClients(rpcMap),
+		Health:       healthcheck.NewHandler(),
 	}
 
 	c.Config = conf.Sub(c.id())
@@ -48,6 +52,10 @@ func NewConnector() *Connector {
 	log.Info().
 		Str("id", c.id()).
 		Msg("Starting connector")
+
+	// For Liveness and Readiness Probe checks
+	go http.ListenAndServe("0.0.0.0:8080", c.Health)
+	log.Info().Str("addr", "0.0.0.0:8080").Msg("healthcheck listening on /live and /ready")
 
 	monitor.StartMonitor(c.id())
 
