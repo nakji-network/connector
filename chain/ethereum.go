@@ -9,9 +9,14 @@ import (
 )
 
 // Ethereum returns an ethereum client connected to websockets RPC
-func (c Clients) Ethereum(ctx context.Context) *ethclient.Client {
+func (c Clients) Ethereum(ctx context.Context, chainOverride ...string) *ethclient.Client {
+	chain := "ethereum"
+	if len(chainOverride) > 0 && chainOverride[0] != "" {
+		chain = chainOverride[0]
+	}
+
 	// Read config from config yaml under `rpcs.ethereum`
-	rpcs := c.rpcMap["ethereum"].Full
+	rpcs := c.rpcMap[chain].Full
 
 	// go-ethereum client only supports 1 rpc connection currently so we do this hack
 	var RPCURL string

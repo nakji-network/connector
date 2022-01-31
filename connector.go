@@ -16,12 +16,13 @@ import (
 
 type Connector struct {
 	manifest *manifest
-	Config   *viper.Viper // TODO: maybe our own config struct for globals and nonglobals. Namespace so it can't read configs from other connectors (secrets)
+	Config   *viper.Viper
 
-	*kafkautils.Producer
-	*kafkautils.Consumer
+	kafkaUrl        string
 	producerStarted bool
 	consumerStarted bool
+	*kafkautils.Producer
+	*kafkautils.Consumer
 
 	ChainClients *chain.Clients
 }
@@ -29,8 +30,8 @@ type Connector struct {
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.
 func NewConnector() *Connector {
 	conf := config.GetConfig()
+
 	rpcMap := make(map[string]chain.RPCs)
-	fmt.Println(rpcMap)
 	err := conf.UnmarshalKey("rpcs", &rpcMap)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Could not load RPC list from config file")
@@ -38,9 +39,11 @@ func NewConnector() *Connector {
 
 	c := &Connector{
 		manifest:     LoadManifest(),
-		Config:       conf,
+		kafkaUrl:     conf.GetString("kafka.url"),
 		ChainClients: chain.NewClients(rpcMap),
 	}
+
+	c.Config = conf.Sub(c.id())
 
 	log.Info().
 		Str("id", c.id()).
@@ -142,7 +145,7 @@ func (c *Connector) startProducer() error {
 		Msg("Initializing kafka producer")
 
 	var err error
-	c.Producer, err = kafkautils.NewProducer(c.Config.GetString("kafka.url"), txID)
+	c.Producer, err = kafkautils.NewProducer(c.kafkaUrl, txID)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create new kafka producer")
 		return err
@@ -162,7 +165,7 @@ func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
 
 	// set auto.offset.reset for all topics because we don't care about the past for streams
 	var err error
-	c.Consumer, err = kafkautils.NewConsumer(c.Config.GetString("kafka.url"), groupID, overrideOpts...)
+	c.Consumer, err = kafkautils.NewConsumer(c.kafkaUrl, groupID, overrideOpts...)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kafka consumer")
 		return err

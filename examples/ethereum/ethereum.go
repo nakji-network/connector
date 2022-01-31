@@ -15,6 +15,8 @@ import (
 
 type EthereumConnector struct {
 	*connector.Connector // embed Nakji connector.Connector into your custom connector to get access to all its methods
+
+	Chain string // chain override, since ChainClients.Ethereum supports overriding with any evm chain
 }
 
 func (c *EthereumConnector) Start() {
@@ -23,7 +25,7 @@ func (c *EthereumConnector) Start() {
 	signal.Notify(interrupt, os.Interrupt)
 
 	// Get the initialized Ethereum client. For more Nakji supported clients see connector/chain/
-	client := c.ChainClients.Ethereum(context.Background())
+	client := c.ChainClients.Ethereum(context.Background(), c.Chain)
 
 	// Subscribe to headers
 	headers := make(chan *types.Header)

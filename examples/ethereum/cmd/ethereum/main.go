@@ -13,7 +13,14 @@ func main() {
 		Connector: c,
 
 		// Any additional custom connections not supported natively by Nakji
-		// Client: c.ChainClients.Ethereum(context.Background()),
+		// Client: DogecoinClient(context.Background()),
+
+		// Any additional command line arguments, such as chain selection override. Set up via https://pkg.go.dev/github.com/spf13/viper#readme-working-with-flags
+		// Chain: "bsc",
+
+		// Any additional config vars from the config yaml, using functions from Viper (https://pkg.go.dev/github.com/spf13/viper#readme-getting-values-from-viper)
+		// This is namespaced via connector id (author-name-version)
+		// CustomOption: c.Config.GetString("custom_option"),
 	}
 
 	ethConnector.Start()
