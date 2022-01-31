@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/nakji-network/connector/chain"
 	"github.com/nakji-network/connector/config"
 	"github.com/nakji-network/connector/kafkautils"
 	"github.com/nakji-network/connector/monitor"
@@ -15,19 +16,30 @@ import (
 
 type Connector struct {
 	manifest *manifest
-	Config *viper.Viper // TODO: maybe our own config struct for globals and nonglobals. Namespace so it can't read configs from other connectors (secrets)
+	Config   *viper.Viper // TODO: maybe our own config struct for globals and nonglobals. Namespace so it can't read configs from other connectors (secrets)
 
 	*kafkautils.Producer
 	*kafkautils.Consumer
-
 	producerStarted bool
 	consumerStarted bool
+
+	ChainClients *chain.Clients
 }
 
+// NewConnector returns a base connector implementation that other connectors can embed to add on to.
 func NewConnector() *Connector {
+	conf := config.GetConfig()
+	rpcMap := make(map[string]chain.RPCs)
+	fmt.Println(rpcMap)
+	err := conf.UnmarshalKey("rpcs", &rpcMap)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Could not load RPC list from config file")
+	}
+
 	c := &Connector{
-		manifest: LoadManifest(),
-		Config: config.GetConfig(),
+		manifest:     LoadManifest(),
+		Config:       conf,
+		ChainClients: chain.NewClients(rpcMap),
 	}
 
 	log.Info().
@@ -41,7 +53,7 @@ func NewConnector() *Connector {
 
 // id() returns a unique id for this connector based on the manifest.
 // TODO: need to change id if the connector is used multiple times with different arguments
-func (c *Connector) id () string {
+func (c *Connector) id() string {
 	return fmt.Sprintf("%s-%s-%s", c.manifest.Author, c.manifest.Name, c.manifest.Version)
 }
 
@@ -105,8 +117,6 @@ func (c *Connector) SubscribeExample() error {
 
 	return nil
 }
-
-
 
 // ProduceMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message) error {

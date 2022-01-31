@@ -5,11 +5,13 @@ package ethereum
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"os"
 	"os/signal"
 
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/nakji-network/connector"
 	"github.com/rs/zerolog/log"
 )
@@ -17,7 +19,16 @@ import (
 type EthereumConnector struct {
 	*connector.Connector // embed Nakji connector.Connector into your custom connector to get access to all its methods
 
-	RPCURL string
+	Client IEthClient
+}
+
+// If the ethclient ever changes, all this connector needs are these methods
+type IEthClient interface {
+	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
+	BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error)
+	BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error)
+	SubscribeFilterLogs(ctx context.Context, q ethereum.FilterQuery, ch chan<- types.Log) (ethereum.Subscription, error)
+	Close()
 }
 
 func (c *EthereumConnector) Start() {
@@ -25,17 +36,9 @@ func (c *EthereumConnector) Start() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	// connect to Ethereum RPC websockets
-	log.Info().Str("url", c.RPCURL).Msg("connecting to Ethereum RPC")
-	client, err := ethclient.DialContext(context.Background(), c.RPCURL)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Ethereum RPC connection error")
-	}
-	defer client.Close()
-
 	// Subscribe to headers
 	headers := make(chan *types.Header)
-	sub, err := client.SubscribeNewHead(context.Background(), headers)
+	sub, err := c.Client.SubscribeNewHead(context.Background(), headers)
 	if err != nil {
 		log.Fatal().Err(err)
 	}
@@ -47,7 +50,8 @@ func (c *EthereumConnector) Start() {
 			case err := <-sub.Err():
 				log.Fatal().Err(err)
 			case header := <-headers:
-				block, err := client.BlockByHash(context.Background(), header.Hash())
+				// Header doesn't contain full block information, so get block
+				block, err := c.Client.BlockByHash(context.Background(), header.Hash())
 				if err != nil {
 					log.Fatal().Err(err).Msg("BlockByHash error")
 				}
@@ -101,7 +105,7 @@ func (c *EthereumConnector) Start() {
 
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
-			client.Close()
+			c.Client.Close()
 			c.Producer.Close()
 			return
 		}
