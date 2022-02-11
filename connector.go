@@ -144,6 +144,30 @@ func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message)
 	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
 }
 
+// ProduceMessage sends protobuf to message queue with a Topic and Key.
+func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto.Message) error {
+	err := c.ProduceMessage(namespace, subject, msg)
+	if err != nil {
+		return err
+	}
+
+	err = c.Producer.CommitTransaction(nil)
+	if err != nil {
+		log.Error().Err(err).Msg("Processor: Failed to commit transaction")
+
+		err = c.Producer.AbortTransaction(nil)
+		if err != nil {
+			log.Fatal().Err(err).Msg("")
+		}
+	}
+	// Start a new transaction
+	err = c.Producer.BeginTransaction()
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+	return nil
+}
+
 // startProducer() creates a new kafka producer with transactions enabled.
 func (c *Connector) startProducer() error {
 	txID := c.id()
@@ -188,7 +212,8 @@ func (c *Connector) GenerateTopicFromProto(msg proto.Message) string {
 	author := c.manifest.Author
 	connectorName := c.manifest.Name
 	version := strings.ReplaceAll(c.manifest.Version.String(), ".", "_")
-	eventName := strings.ToLower(string(msg.ProtoReflect().Descriptor().Name()))
+	eventName := strings.ToLower(string(msg.ProtoReflect().Descriptor().FullName()))
+	eventName = strings.ReplaceAll(eventName, ".", "_")
 
 	return strings.Join([]string{author, connectorName, version, eventName}, ".")
 }

@@ -6,6 +6,7 @@ The library handles:
 - Getting configs
 - Publishing and Subscribing to the Nakji message queue
 - Initializing monitoring
+- [Healthcheck support](https://pkg.go.dev/github.com/heptiolabs/healthcheck)
 
 Connector examples are in [examples/](examples).
 
