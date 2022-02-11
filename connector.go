@@ -48,6 +48,9 @@ func NewConnector() *Connector {
 	}
 
 	c.Config = conf.Sub(c.id())
+	if c.Config == nil {
+		c.Config = viper.New()
+	}
 
 	log.Info().
 		Str("id", c.id()).
