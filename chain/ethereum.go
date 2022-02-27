@@ -26,10 +26,13 @@ func (c Clients) Ethereum(ctx context.Context, chainOverride ...string) *ethclie
 			break
 		}
 	}
-	log.Info().Str("url", RPCURL).Msg("connecting to Ethereum RPC")
+	log.Info().
+		Str("chain", chain).
+		Str("url", RPCURL).
+		Msg("connecting to RPC")
 	client, err := ethclient.DialContext(ctx, RPCURL)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Ethereum RPC connection error")
+		log.Fatal().Err(err).Msg("RPC connection error")
 	}
 	return client
 }
