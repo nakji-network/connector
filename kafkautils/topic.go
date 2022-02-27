@@ -38,26 +38,21 @@ type Topic struct {
 }
 
 func (t Topic) String() string {
-	return strings.Join([]string{string(t.Env), string(t.MsgType), t.Schema, t.Version}, TopicDelimiter)
+	return strings.Join([]string{string(t.Env), string(t.MsgType), t.Schema}, TopicDelimiter)
 }
 
 // ParseTopic parses topic string to Topic struct.
-// topic strings that start with . (eg .fct.block.0) get set `dev` prefix.
+// topic strings that start with . (eg .fct.nakji.ethereum.0_0_0.chain_block) get set `dev` prefix.
 // Use second argument to override env (only for initialization at start of program)
 func ParseTopic(s string, e ...string) (Topic, error) {
 	p := strings.Split(s, TopicDelimiter)
 
-	if len(p) != 4 && len(p) != 8 {
-		return Topic{}, fmt.Errorf("cannot parse topic, does not have 4 or 8 segments: %s", s)
+	if len(p) != 6 {
+		return Topic{}, fmt.Errorf("cannot parse topic, does not have 6 segments: %s", s)
 	}
 
-	schema := p[2]
-	version := p[3]
-
-	if len(p) >= 8 {
-		schema = strings.Join(p[2:7], ".")
-		version = p[7]
-	}
+	schema := strings.SplitAfterN(s, TopicDelimiter, 3)[2]
+	version := p[4]
 
 	pbType := TopicTypeRegistry.Get(schema)
 	if pbType == nil {

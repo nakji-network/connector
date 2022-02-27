@@ -42,7 +42,7 @@ func MustNewProducer(brokers, transactionalID string) *Producer {
 	return p
 }
 
-// New Kafka producer. Must call `EnableTransactions` before sending messages to start transactions.
+// NewProducer produces new Kafka producer. Must call `EnableTransactions` before sending messages to start transactions.
 func NewProducer(brokers, transactionalID string) (*Producer, error) {
 	producer, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers": brokers,
@@ -134,7 +134,7 @@ func NewProducer(brokers, transactionalID string) (*Producer, error) {
 	return &p, nil
 }
 
-// Enable transactions for this Kafka producer. Use this after everything is loaded but before sending any kafka messages
+// EnableTransactions enables transactions for this Kafka producer. Use this after everything is loaded but before sending any kafka messages
 func (p *Producer) EnableTransactions() error {
 	// Init Transactions within 2 minutes
 	maxDuration := 120 * time.Second
@@ -236,7 +236,7 @@ func (p *Producer) SendOffsetsToTransaction(position kafka.TopicPartitions, c *C
 	}
 }
 
-// Plain kafka produce
+// WriteKafkaMessages writes plain kafka messages
 func (p *Producer) WriteKafkaMessages(topic string, key []byte, value proto.Message) error {
 	if p.closed {
 		return fmt.Errorf("Cannot write kafka message. Producer is already closed.")
@@ -257,7 +257,7 @@ func (p *Producer) WriteKafkaMessages(topic string, key []byte, value proto.Mess
 	}, nil)
 }
 
-// Write for transactional producers, committing transaction after each write
+// WriteAndCommit writes for transactional producers, committing transaction after each write
 func (p *Producer) WriteAndCommit(topic string, key []byte, value proto.Message) error {
 	err := p.WriteKafkaMessages(topic, key, value)
 	if err != nil {
@@ -296,4 +296,17 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 				Msg("Write to kafka error")
 		}
 	}
+}
+
+// MakeQueueTransactionSink creates a channel that receives Kafka Messages. All messages within the channel are then automatically
+// published to the specific topic in the `*kafkautils.Message`.
+func (p *Producer) MakeQueueTransactionSink() chan *Message {
+	sink := make(chan *Message, 10000)
+	err := p.EnableTransactions()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Transaction was not enabled")
+	}
+	go p.WriteAndCommitSink(sink)
+
+	return sink
 }

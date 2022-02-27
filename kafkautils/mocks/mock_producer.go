@@ -8,8 +8,8 @@ import (
 	context "context"
 	reflect "reflect"
 
-	kafkautils "github.com/nakji-network/connector/kafkautils"
 	gomock "github.com/golang/mock/gomock"
+	kafkautils "github.com/nakji-network/connector/kafkautils"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 )
 
