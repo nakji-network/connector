@@ -3,7 +3,6 @@ package connector
 import (
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/heptiolabs/healthcheck"
@@ -21,6 +20,7 @@ type Connector struct {
 	Config   *viper.Viper
 	Health   healthcheck.Handler
 
+	env             string
 	kafkaUrl        string
 	producerStarted bool
 	consumerStarted bool
@@ -33,6 +33,7 @@ type Connector struct {
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.
 func NewConnector() *Connector {
 	conf := config.GetConfig()
+	conf.SetDefault("kafka.env", "dev")
 
 	rpcMap := make(map[string]chain.RPCs)
 	err := conf.UnmarshalKey("rpcs", &rpcMap)
@@ -42,6 +43,7 @@ func NewConnector() *Connector {
 
 	c := &Connector{
 		manifest:     LoadManifest(),
+		env:          conf.GetString("kafka.env"),
 		kafkaUrl:     conf.GetString("kafka.url"),
 		ChainClients: chain.NewClients(rpcMap),
 		Health:       healthcheck.NewHandler(),
@@ -68,7 +70,7 @@ func NewConnector() *Connector {
 // id() returns a unique id for this connector based on the manifest.
 // TODO: need to change id if the connector is used multiple times with different arguments
 func (c *Connector) id() string {
-	return fmt.Sprintf("%s-%s-%s", c.manifest.Author, c.manifest.Name, c.manifest.Version)
+	return fmt.Sprintf("%s-%s-%s-%s", c.manifest.Author, c.manifest.Name, c.manifest.Version, c.env)
 }
 
 // Subscribe creates a message queue consumer and subscribes to a list of topics.
@@ -144,7 +146,7 @@ func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message)
 
 	topic := c.GenerateTopicFromProto(msg)
 	key := kafkautils.NewKey(namespace, subject)
-	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
+	return c.WriteKafkaMessages(topic, key, msg)
 }
 
 // ProduceMessage sends protobuf to message queue with a Topic and Key.
@@ -211,12 +213,12 @@ func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
 
 // GenerateTopicFromProto generates message queue topic names based on the protobuf message.
 // Event names should be prefixed with contract_ or category_ when appropriate.
-func (c *Connector) GenerateTopicFromProto(msg proto.Message) string {
-	author := c.manifest.Author
-	connectorName := c.manifest.Name
-	version := strings.ReplaceAll(c.manifest.Version.String(), ".", "_")
-	eventName := strings.ToLower(string(msg.ProtoReflect().Descriptor().FullName()))
-	eventName = strings.ReplaceAll(eventName, ".", "_")
-
-	return strings.Join([]string{author, connectorName, version, eventName}, ".")
+func (c *Connector) GenerateTopicFromProto(msg proto.Message) kafkautils.Topic {
+	return kafkautils.NewTopic(
+		c.env,
+		"fct",
+		c.manifest.Author,
+		c.manifest.Name,
+		c.manifest.Version.Version,
+		msg)
 }
