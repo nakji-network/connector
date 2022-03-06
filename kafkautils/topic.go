@@ -6,12 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Masterminds/semver"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 )
-
-var TopicDelimiter = "."
 
 type env string
 
@@ -19,7 +16,14 @@ const (
 	prod    env = "prod"
 	staging     = "staging"
 	dev         = "dev"
-	test        = "test"
+)
+
+const (
+	TopicContextSeparator   string = "."
+	TopicContractSeparator  string = "_"
+	TopicAggregateSeparator string = "-"
+	TopicWildcardSuffix     string = "-*"
+	TopicNumSegments        int    = 4
 )
 
 type msgType string
@@ -32,57 +36,29 @@ const (
 )
 
 type Topic struct {
-	Env           env
-	MsgType       msgType
-	Author        string
-	ConnectorName string
-	Version       *semver.Version
-	EventName     string
-	pb            proto.Message // create an empty protobuf struct instance, filled upon UnmarshalProto
+	Env     env
+	MsgType msgType
+	Schema  string
+	Version string        // can parse into int when necessary
+	pb      proto.Message // create an empty protobuf struct instance, filled upon UnmarshalProto
 }
 
-// String generates the topic string
 func (t Topic) String() string {
-	return strings.Join([]string{string(t.Env), string(t.MsgType), t.Schema()}, TopicDelimiter)
-}
-
-// Schema generates the schema string
-func (t Topic) Schema() string {
-	return strings.Join([]string{
-		t.Author,
-		t.ConnectorName,
-		strings.ReplaceAll(t.Version.String(), ".", "_"),
-		t.EventName,
-	}, TopicDelimiter)
-}
-
-func NewTopic(en, ty, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
-	return Topic{
-		Env:           env(en),
-		MsgType:       msgType(ty),
-		Author:        author,
-		ConnectorName: connectorName,
-		Version:       version,
-		EventName:     strings.ReplaceAll(strings.ToLower(string(msg.ProtoReflect().Descriptor().FullName())), ".", "_"),
-		pb:            msg,
-	}
+	return strings.Join([]string{string(t.Env), string(t.MsgType), t.Schema}, TopicContextSeparator)
 }
 
 // ParseTopic parses topic string to Topic struct.
 // topic strings that start with . (eg .fct.nakji.ethereum.0_0_0.chain_block) get set `dev` prefix.
 // Use second argument to override env (only for initialization at start of program)
 func ParseTopic(s string, e ...string) (Topic, error) {
-	p := strings.Split(s, TopicDelimiter)
+	p := strings.Split(s, TopicContextSeparator)
 
 	if len(p) != 6 {
 		return Topic{}, fmt.Errorf("cannot parse topic, does not have 6 segments: %s", s)
 	}
 
-	schema := strings.SplitAfterN(s, TopicDelimiter, 3)[2]
-	version, err := semver.NewVersion(strings.ReplaceAll(p[4], "_", "."))
-	if err != nil {
-		return Topic{}, err
-	}
+	schema := strings.SplitAfterN(s, TopicContextSeparator, 3)[2]
+	version := p[4]
 
 	pbType := TopicTypeRegistry.Get(schema)
 	if pbType == nil {
@@ -90,13 +66,11 @@ func ParseTopic(s string, e ...string) (Topic, error) {
 	}
 
 	res := Topic{
-		Env:           env(p[0]),
-		MsgType:       msgType(p[1]),
-		Author:        p[2],
-		ConnectorName: p[3],
-		Version:       version,
-		EventName:     p[5],
-		pb:            proto.Clone(pbType),
+		Env:     env(p[0]),
+		MsgType: msgType(p[1]),
+		Schema:  schema,
+		Version: version,
+		pb:      proto.Clone(pbType),
 	}
 
 	// override env

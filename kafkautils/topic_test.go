@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/Masterminds/semver"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -34,13 +33,11 @@ func TestParseTopic(t *testing.T) {
 			name: "parse new style topic",
 			args: args{s: ".fct.blep.test.1_2_3.mycontract_parsley", e: []string{"test"}},
 			want: Topic{
-				Env:           "test",
-				MsgType:       "fct",
-				Author:        "blep",
-				ConnectorName: "test",
-				Version:       semver.MustParse("1.2.3"),
-				EventName:     "mycontract_parsley",
-				pb:            proto.Clone(&Petersilie{}),
+				Env:     "test",
+				MsgType: "fct",
+				Schema:  "blep.test.1_2_3.mycontract_parsley",
+				Version: "1_2_3",
+				pb:      proto.Clone(&Petersilie{}),
 			},
 			wantErr: nil,
 		},
