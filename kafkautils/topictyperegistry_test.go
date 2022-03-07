@@ -84,7 +84,7 @@ func TestGetActiveTopics(t *testing.T) {
 			want: map[string]bool{},
 		},
 	} {
-		res := GetActiveTopics(testCase.input)
+		res := GetActiveSchemas(testCase.input)
 		for k, v := range res {
 			if testCase.want[k] != v {
 				t.Error("topic type registry GetActiveTopics failed.", "got:", res, "want:", testCase.want)
