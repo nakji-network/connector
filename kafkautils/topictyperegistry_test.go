@@ -46,7 +46,7 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestGetActiveTopics(t *testing.T) {
+func TestGetActiveSchemas(t *testing.T) {
 	t.Parallel()
 
 	for _, testCase := range []struct {
