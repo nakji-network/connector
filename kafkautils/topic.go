@@ -63,7 +63,7 @@ func NewTopic(en, ty, author, connectorName string, version *semver.Version, msg
 		Author:        author,
 		ConnectorName: connectorName,
 		Version:       version,
-		EventName:     strings.ReplaceAll(strings.ToLower(string(msg.ProtoReflect().Descriptor().FullName())), ".", "_"),
+		EventName:     strings.ReplaceAll(string(msg.ProtoReflect().Descriptor().FullName()), ".", "_"),
 		pb:            msg,
 	}
 }

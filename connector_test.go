@@ -17,7 +17,7 @@ func TestGenerateTopicFromProto(t *testing.T) {
 		},
 	}
 	got := c.GenerateTopicFromProto(&Transaction{}).String()
-	want := "test.fct.nakji.ethereum.0_0_0.ethereum_transaction"
+	want := "test.fct.nakji.ethereum.0_0_0.ethereum_Transaction"
 	if got != want {
 		t.Errorf("Error generating topic from proto: got=%q want=%q", got, want)
 	}
