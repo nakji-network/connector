@@ -20,9 +20,14 @@ func NewSchema(schema string) (*StreamName, error) {
 		return nil, fmt.Errorf(fmt.Sprintf("incorrect number of segments. want: %d, got: %d", TopicNumSegments, len(segments)))
 	}
 
-	contractEvent := strings.SplitAfterN(segments[3], TopicContractSeparator, 2)
-	if len(contractEvent) != 2 {
-		return nil, fmt.Errorf(fmt.Sprintf("incorrect schema definition. want: contract_event, got: %s", segments[3]))
+	var contractEvent []string
+	if segments[3] == "*" {
+		contractEvent = []string{"*", "*"}
+	} else {
+		contractEvent = strings.Split(segments[3], TopicContractSeparator)
+		if len(contractEvent) != 2 {
+			return nil, fmt.Errorf(fmt.Sprintf("incorrect schema definition. want: contract_event, got: %s", segments[3]))
+		}
 	}
 
 	s := &StreamName{
@@ -56,9 +61,9 @@ func (s *StreamName) hasSchema(schema string) bool {
 		return false
 	}
 
-	return (in.Author == "*" || in.Author == s.Author) &&
-		(in.Namespace == "*" || in.Namespace == s.Namespace) &&
-		(in.Version == "*" || in.Version == s.Version) &&
-		(in.Subject == "*" || in.Subject == s.Subject) &&
-		(in.Event == "*" || in.Event == s.Event)
+	return (s.Author == "*" || s.Author == in.Author) &&
+		(s.Namespace == "*" || s.Namespace == in.Namespace) &&
+		(s.Version == "*" || s.Version == in.Version) &&
+		(s.Contract == "*" || s.Contract == in.Contract) &&
+		(s.Event == "*" || s.Event == in.Event)
 }
