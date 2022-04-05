@@ -9,7 +9,7 @@ type StreamName struct {
 	Author    string //	e.g. nakji
 	Namespace string //	e.g. common
 	Version   string // e.g. 0_0_0
-	Subject   string //	e.g. market
+	Contract  string //	e.g. market
 	Event     string //	e.g. trade
 	Period    string // e.g. *
 }
@@ -34,7 +34,7 @@ func NewSchema(schema string) (*StreamName, error) {
 		Author:    segments[0],
 		Namespace: segments[1],
 		Version:   segments[2],
-		Subject:   contractEvent[0],
+		Contract:  contractEvent[0],
 		Event:     contractEvent[1],
 	}
 
@@ -52,7 +52,7 @@ func NewSchema(schema string) (*StreamName, error) {
 
 func (s *StreamName) isValid() bool {
 	//	TODO Expand input validation
-	return s.Author != "" && s.Namespace != "" && s.Version != "" && s.Subject != "" && s.Event != ""
+	return s.Author != "" && s.Namespace != "" && s.Version != "" && s.Contract != "" && s.Event != ""
 }
 
 func (s *StreamName) hasSchema(schema string) bool {
