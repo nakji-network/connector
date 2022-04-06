@@ -49,10 +49,7 @@ func NewConnector(path string) *Connector {
 		Health:       healthcheck.NewHandler(),
 	}
 
-	c.Config = conf.Sub(c.id())
-	if c.Config == nil {
-		c.Config = viper.New()
-	}
+	c.Config = conf
 
 	log.Info().
 		Str("id", c.id()).
