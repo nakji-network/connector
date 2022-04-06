@@ -2,12 +2,17 @@
 package main
 
 import (
+	"path/filepath"
+	"runtime"
+
 	"github.com/nakji-network/connector"
 	"github.com/nakji-network/connector/examples/ethereum"
 )
 
 func main() {
-	c := connector.NewConnector()
+	_, filename, _, _ := runtime.Caller(0)
+	path := filepath.Join(filepath.Dir(filename), "../..", "manifest.yaml")
+	c := connector.NewConnector(path)
 
 	ethConnector := ethereum.EthereumConnector{
 		Connector: c,
