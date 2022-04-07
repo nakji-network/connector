@@ -143,10 +143,6 @@ func (c *Connector) MakeQueueTransactionSink() (chan *kafkautils.Message, error)
 	}
 
 	sink := make(chan *kafkautils.Message, 10000)
-	err := c.Producer.EnableTransactions()
-	if err != nil {
-		return nil, err
-	}
 	go c.Producer.WriteAndCommitSink(sink)
 
 	return sink, nil
@@ -205,7 +201,10 @@ func (c *Connector) startProducer() error {
 		log.Fatal().Err(err).Msg("Failed to create new kafka producer")
 		return err
 	}
-	c.Producer.EnableTransactions()
+	err = c.Producer.EnableTransactions()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
