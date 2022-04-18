@@ -30,6 +30,7 @@ require (
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/jhump/protoreflect v1.12.0 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
 	github.com/mitchellh/mapstructure v1.4.3 // indirect

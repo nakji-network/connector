@@ -3,6 +3,7 @@
 package kafkautils
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -54,59 +55,75 @@ func (c *Consumer) Messages() chan Message {
 }
 
 // Process kafka events and forward to Consumer.MessageCh
-func (c *Consumer) SubscribeProto(topics []Topic) error {
+func (c *Consumer) SubscribeProto(ctx context.Context, topics []Topic) error {
 	log.Info().Strs("topics", TopicsStrings(topics)).Msg("kafka subscribe")
 	if err := c.SubscribeTopics(TopicsStrings(topics), nil); err != nil {
 		log.Error().Err(err).Msg("kafka subscribe failure")
 		return err
 	}
-	return nil
-}
 
-//	Listen will forward incoming events to message channel. It should be called on a separate goroutine.
-func (c *Consumer) Listen() {
-	for ev := range c.Events() {
-		switch e := ev.(type) {
-		case kafka.AssignedPartitions:
-			fmt.Fprintf(os.Stderr, "%% %v\n", e)
-			c.Assign(e.Partitions)
-		case kafka.RevokedPartitions:
-			fmt.Fprintf(os.Stderr, "%% %v\n", e)
-			c.Unassign()
-		case *kafka.Message:
-			//log.Debug().Msgf("%% Message on %s:\n%s\n",
-			//e.TopicPartition, string(e.Value))
+	for {
+		select {
+		case ev := <-c.Events():
+			switch e := ev.(type) {
+			case kafka.AssignedPartitions:
+				fmt.Fprintf(os.Stderr, "%% %v\n", e)
+				c.Assign(e.Partitions)
+			case kafka.RevokedPartitions:
+				fmt.Fprintf(os.Stderr, "%% %v\n", e)
+				c.Unassign()
+			case *kafka.Message:
+				//log.Debug().Msgf("%% Message on %s:\n%s\n",
+				//e.TopicPartition, string(e.Value))
 
-			k, err := ParseKey(e.Key)
-			if err != nil {
-				log.Error().Err(err).Msg("")
-				continue
+				k, err := ParseKey(e.Key)
+				if err != nil {
+					log.Error().Err(err).Msg("")
+					continue
+				}
+
+				t, err := ParseTopic(*e.TopicPartition.Topic)
+				if err != nil {
+					log.Error().Err(err).Str("topic", *e.TopicPartition.Topic).Msg("Unable to parse topic")
+					continue
+				}
+
+				// If it exists in TopicTypeRegistry, use that; otherwise use Proto Registry
+				if _, ok := TopicTypeRegistry[t.Schema()]; ok {
+					protoMsg, err := t.UnmarshalProto(e.Value)
+					if err != nil {
+						log.Error().Err(err).Interface("topic", t).Msg("Unable to UnmarshalProto topic")
+						continue
+					}
+					c.MessageCh <- Message{
+						Message:  e,
+						Topic:    t,
+						Key:      k,
+						ProtoMsg: protoMsg,
+					}
+				} else {
+					dynamicProtoMsg, err := t.UnmarshalDynamicProto(e.Value)
+					if err != nil {
+						log.Error().Err(err).Interface("topic", t).Msg("Unable to UnmarshalProto topic")
+						continue
+					}
+					c.MessageCh <- Message{
+						Message:    e,
+						Topic:      t,
+						Key:        k,
+						IsDynamic:  true,
+						DynamicMsg: dynamicProtoMsg,
+					}
+				}
+			case kafka.PartitionEOF:
+				log.Info().Interface("event", e).Msg("%% Reached")
+			case kafka.Error:
+				// Errors should generally be considered as informational, the client will try to automatically recover
+				fmt.Fprintf(os.Stderr, "%% Error: %v\n", e)
 			}
 
-			t, err := ParseTopic(*e.TopicPartition.Topic)
-			if err != nil {
-				log.Error().Err(err).Str("topic", *e.TopicPartition.Topic).Msg("Unable to parse topic")
-				continue
-			}
-
-			protoMsg, err := t.UnmarshalProto(e.Value)
-			if err != nil {
-				log.Error().Err(err).Interface("topic", t).Msg("Unable to UnmarshalProto topic")
-				continue
-			}
-
-			c.MessageCh <- Message{
-				Message:  e,
-				Topic:    t,
-				Key:      k,
-				ProtoMsg: protoMsg,
-			}
-
-		case kafka.PartitionEOF:
-			log.Info().Interface("event", e).Msg("%% Reached")
-		case kafka.Error:
-			// Errors should generally be considered as informational, the client will try to automatically recover
-			fmt.Fprintf(os.Stderr, "%% Error: %v\n", e)
+		case <-ctx.Done():
+			return nil
 		}
 	}
 }

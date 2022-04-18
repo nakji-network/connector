@@ -7,14 +7,15 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver"
+	"github.com/jhump/protoreflect/dynamic"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 )
 
-type env string
+type Env string
 
 const (
-	prod    env = "prod"
+	prod    Env = "prod"
 	staging     = "staging"
 	dev         = "dev"
 	test        = "test"
@@ -28,23 +29,24 @@ const (
 	TopicNumSegments        int    = 4
 )
 
-type msgType string
+type MsgType string
 
 const (
-	fct msgType = "fct"
-	cdc         = "cdc"
-	cmd         = "cmd"
-	sys         = "sys"
+	Fct MsgType = "fct"
+	Cdc         = "cdc"
+	Cmd         = "cmd"
+	Sys         = "sys"
 )
 
 type Topic struct {
-	Env           env
-	MsgType       msgType
+	Env           Env
+	MsgType       MsgType
 	Author        string
 	ConnectorName string
 	Version       *semver.Version // can parse into int when necessary
 	EventName     string
 	pb            proto.Message // create an empty protobuf struct instance, filled upon UnmarshalProto
+	dynamicPb     dynamic.Message
 }
 
 func (t Topic) String() string {
@@ -63,8 +65,8 @@ func (t Topic) Schema() string {
 
 func NewTopic(en, ty, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
 	return Topic{
-		Env:           env(en),
-		MsgType:       msgType(ty),
+		Env:           Env(en),
+		MsgType:       MsgType(ty),
 		Author:        author,
 		ConnectorName: connectorName,
 		Version:       version,
@@ -90,23 +92,25 @@ func ParseTopic(s string, e ...string) (Topic, error) {
 	}
 
 	pbType := TopicTypeRegistry.Get(schema)
-	if pbType == nil {
+	dynamicPb, err := DynamicTopicTypeRegistry.Get(schema)
+	if pbType == nil && err != nil {
 		return Topic{}, fmt.Errorf("cannot find topic schema in type registry: %s", schema)
 	}
 
 	res := Topic{
-		Env:           env(p[0]),
-		MsgType:       msgType(p[1]),
+		Env:           Env(p[0]),
+		MsgType:       MsgType(p[1]),
 		Author:        p[2],
 		ConnectorName: p[3],
 		Version:       version,
 		EventName:     p[5],
 		pb:            proto.Clone(pbType),
+		dynamicPb:     dynamicPb,
 	}
 
 	// override env
 	if len(e) == 1 {
-		res.Env = env(e[0])
+		res.Env = Env(e[0])
 	}
 
 	if res.Env == "" {
@@ -154,4 +158,15 @@ func (t *Topic) UnmarshalProto(data []byte) (proto.Message, error) {
 		return nil, fmt.Errorf("Cannot unmarshal proto for topic %s", t)
 	}
 	return t.pb, proto.Unmarshal(data, t.pb)
+}
+
+func (t *Topic) UnmarshalDynamicProto(data []byte) (dynamic.Message, error) {
+	if &(t.dynamicPb) == nil {
+		return dynamic.Message{}, fmt.Errorf("cannot unmarshal dymanic proto for topic %s", t)
+	}
+	err := t.dynamicPb.Unmarshal(data)
+	if err != nil {
+		return dynamic.Message{}, err
+	}
+	return t.dynamicPb, nil
 }

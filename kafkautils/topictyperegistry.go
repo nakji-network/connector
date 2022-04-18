@@ -1,9 +1,11 @@
 package kafkautils
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 
+	"github.com/jhump/protoreflect/dynamic"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/proto"
 )
@@ -72,4 +74,23 @@ func GetActiveSchemas(queryParams []string) map[string]bool {
 	}
 
 	return schemas
+}
+
+type DynamicTTP map[string]dynamic.Message
+
+var DynamicTopicTypeRegistry = DynamicTTP{}
+
+func (dr DynamicTTP) Get(schema string) (dynamic.Message, error) {
+	s := strings.SplitN(schema, "-", 2)
+	switch len(s) {
+	case 1:
+		if dm, ok := dr[schema]; ok {
+			return dm, nil
+		}
+	case 2:
+		if dm, ok := dr[s[0]+"-*"]; ok {
+			return dm, nil
+		}
+	}
+	return dynamic.Message{}, errors.New("failed to find dynamic message by schema")
 }

@@ -2,6 +2,7 @@ package kafkautils
 
 import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/jhump/protoreflect/dynamic"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -9,9 +10,11 @@ import (
 // this way, the kafka event stays together
 type Message struct {
 	*kafka.Message
-	Topic    Topic
-	Key      Key
-	ProtoMsg proto.Message
+	Topic      Topic
+	Key        Key
+	ProtoMsg   proto.Message
+	IsDynamic  bool
+	DynamicMsg dynamic.Message
 }
 
 // Get the field names from the ProtoMsg
