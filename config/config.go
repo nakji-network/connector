@@ -47,6 +47,7 @@ func SetConfigDefaults(v *viper.Viper) {
 	v.SetDefault("websocket.lruCacheSize", 128)
 	v.SetDefault("websocket.allowedBlocksBehind", 3)
 	v.SetDefault("prometheus.metrics.port", 9999)
+	v.SetDefault("protoregistry.host", "localhost:9191")
 }
 
 // ValidateConfig validates a Viper instance.
@@ -118,12 +119,6 @@ func InitConfig() *viper.Viper {
 	if err != nil {         // Handle errors reading the config file
 		fmt.Printf("Using defaults: %s\n", err)
 		//panic(fmt.Errorf("Fatal error config file: %s \n", err))
-	}
-
-	//SetFlags(v)
-
-	if err = ValidateConfig(v); err != nil {
-		panic(fmt.Errorf("%s \n", err))
 	}
 
 	InitLogging(v)

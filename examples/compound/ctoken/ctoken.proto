@@ -1,0 +1,66 @@
+syntax = "proto3";
+package ctoken;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "blep.ai/data/connectors/compound/ctoken";
+
+// Mint represents a Mint event raised by the Compound contract.
+message Mint {
+  google.protobuf.Timestamp ts = 1;
+  uint64 block = 2;
+  uint64 idx = 3;
+  bytes tx = 4; // tx hash
+  bytes minter = 5; // The address that minted the assets
+  bytes mintAmount = 6;
+  bytes mintTokens = 7;
+}
+
+// Redeem represents a Borrow event raised by the Compound contract.
+message Redeem {
+  google.protobuf.Timestamp ts = 1;
+  uint64 block = 2;
+  uint64 idx = 3;
+  bytes tx = 4; // tx hash
+  bytes redeemer = 5; // The address that redeemed the assets
+  bytes redeemAmount = 6;
+  bytes redeemTokens = 7;
+}
+
+// Borrow represents a Borrow event raised by the Compound contract.
+message Borrow {
+  google.protobuf.Timestamp ts = 1;
+  uint64 block = 2;
+  uint64 idx = 3;
+  bytes tx = 4; // tx hash
+  bytes borrower = 5; // The address that borrowed the assets
+  bytes borrowAmount = 6;
+  bytes accountBorrows = 7;
+  bytes totalBorrows = 8;
+}
+
+// RepayBorrow represents a RepayBorrow event raised by the Compound contract.
+message RepayBorrow {
+  google.protobuf.Timestamp ts = 1;
+  uint64 block = 2;
+  uint64 idx = 3;
+  bytes tx = 4; // tx hash
+  bytes payer = 5;
+  bytes borrower = 6;
+  bytes repayAmount = 7;
+  bytes accountBorrows = 8;
+  bytes totalBorrows = 9;
+}
+
+// LiquidateBorrow represents a LiquidateBorrow event raised by the Compound contract.
+message LiquidateBorrow {
+  google.protobuf.Timestamp ts = 1;
+  uint64 block = 2;
+  uint64 idx = 3;
+  bytes tx = 4; // tx hash
+  bytes liquidator = 5;
+  bytes borrower = 6;
+  bytes repayAmount = 7;
+  bytes cTokenCollateral = 8;
+  bytes seizeTokens = 9;
+}

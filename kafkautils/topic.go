@@ -13,27 +13,27 @@ import (
 
 var TopicDelimiter = "."
 
-type env string
+type Env string
 
 const (
-	prod    env = "prod"
+	prod    Env = "prod"
 	staging     = "staging"
 	dev         = "dev"
 	test        = "test"
 )
 
-type msgType string
+type MsgType string
 
 const (
-	fct msgType = "fct"
-	cdc         = "cdc"
-	cmd         = "cmd"
-	sys         = "sys"
+	Fct MsgType = "fct"
+	Cdc         = "cdc"
+	Cmd         = "cmd"
+	Sys         = "sys"
 )
 
 type Topic struct {
-	Env           env
-	MsgType       msgType
+	Env           Env
+	MsgType       MsgType
 	Author        string
 	ConnectorName string
 	Version       *semver.Version
@@ -56,10 +56,10 @@ func (t Topic) Schema() string {
 	}, TopicDelimiter)
 }
 
-func NewTopic(en, ty, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
+func NewTopic(en Env, ty MsgType, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
 	return Topic{
-		Env:           env(en),
-		MsgType:       msgType(ty),
+		Env:           en,
+		MsgType:       ty,
 		Author:        author,
 		ConnectorName: connectorName,
 		Version:       version,
@@ -90,8 +90,8 @@ func ParseTopic(s string, e ...string) (Topic, error) {
 	}
 
 	res := Topic{
-		Env:           env(p[0]),
-		MsgType:       msgType(p[1]),
+		Env:           Env(p[0]),
+		MsgType:       MsgType(p[1]),
 		Author:        p[2],
 		ConnectorName: p[3],
 		Version:       version,
@@ -101,7 +101,7 @@ func ParseTopic(s string, e ...string) (Topic, error) {
 
 	// override env
 	if len(e) == 1 {
-		res.Env = env(e[0])
+		res.Env = Env(e[0])
 	}
 
 	if res.Env == "" {
@@ -143,10 +143,10 @@ func TopicsStrings(topics []Topic) []string {
 	return res
 }
 
-// protobuf bytes -> struct
+// UnmarshalProto converts protobuf bytes -> struct
 func (t *Topic) UnmarshalProto(data []byte) (proto.Message, error) {
 	if t.pb == nil {
-		return nil, fmt.Errorf("Cannot unmarshal proto for topic %s", t)
+		return nil, fmt.Errorf("cannot unmarshal proto for topic %s", t)
 	}
 	return t.pb, proto.Unmarshal(data, t.pb)
 }

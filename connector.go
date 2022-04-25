@@ -6,13 +6,14 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/heptiolabs/healthcheck"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/nakji-network/connector/chain"
 	"github.com/nakji-network/connector/config"
 	"github.com/nakji-network/connector/kafkautils"
 	"github.com/nakji-network/connector/monitor"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
-	"google.golang.org/protobuf/proto"
 )
 
 type Connector struct {
@@ -20,7 +21,8 @@ type Connector struct {
 	Config   *viper.Viper
 	Health   healthcheck.Handler
 
-	env             string
+	env             kafkautils.Env
+	msgType         kafkautils.MsgType
 	kafkaUrl        string
 	producerStarted bool
 	consumerStarted bool
@@ -43,7 +45,8 @@ func NewConnector(path string) *Connector {
 
 	c := &Connector{
 		manifest:     LoadManifest(path),
-		env:          conf.GetString("kafka.env"),
+		env:          kafkautils.Env(conf.GetString("kafka.env")),
+		msgType:      kafkautils.Fct,
 		kafkaUrl:     conf.GetString("kafka.url"),
 		ChainClients: chain.NewClients(rpcMap),
 		Health:       healthcheck.NewHandler(),
@@ -233,7 +236,7 @@ func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
 func (c *Connector) GenerateTopicFromProto(msg proto.Message) kafkautils.Topic {
 	return kafkautils.NewTopic(
 		c.env,
-		"fct",
+		c.msgType,
 		c.manifest.Author,
 		c.manifest.Name,
 		c.manifest.Version.Version,
