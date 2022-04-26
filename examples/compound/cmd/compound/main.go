@@ -65,7 +65,7 @@ func main() {
 	// Register topic and protobuf type mappings
 	err := prc.RegisterDynamicTopics(compound.TopicTypes, kafkautils.Fct)
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to register dynamic topics")
+		log.Error().Err(err).Msg("failed to register dynamic topics")
 	}
 
 	compoundConnector := compound.Connector{

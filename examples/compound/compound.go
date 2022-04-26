@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/rs/zerolog/log"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/nakji-network/connector"
@@ -27,7 +28,7 @@ type Connector struct {
 }
 
 const (
-	Namespace = "compound"
+	namespace = "compound"
 )
 
 func (c *Connector) Start() {
@@ -46,18 +47,14 @@ func (c *Connector) Start() {
 	// Get the initialized Ethereum client. For more Nakji supported clients see connector/chain/
 	client := c.ChainClients.Ethereum(context.Background(), c.Chain)
 
-	// Subscribe to headers
+	// TODO: Subscribe to headers and store timestamps
 	headers := make(chan *types.Header)
-	sub, err := client.SubscribeNewHead(context.Background(), headers)
+	_, err = client.SubscribeNewHead(context.Background(), headers)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to subscribe headers")
 	}
-	sub = c.CEtherLogsListener(client, logs)
 
-	sink, err := c.MakeQueueTransactionSink()
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to subscribe headers")
-	}
+	sub := c.CEtherLogsListener(client, logs)
 
 	for {
 		select {
@@ -69,7 +66,30 @@ func (c *Connector) Start() {
 		case err = <-sub.Err():
 			log.Fatal().Err(err)
 		case evLog := <-logs:
-			c.ProcessLogEvent(contractAbi, evLog, sink)
+			msg, err := c.ProcessLogEvent(contractAbi, evLog)
+			if err != nil {
+				log.Error().Err(err).Msg("failed to process log event")
+			}
+			err = c.ProduceMessage(namespace, evLog.Address.Hex(), msg)
+			if err != nil {
+				log.Error().Err(err).Msg("Kafka write proto")
+			}
+			// Commit Kafka Transaction
+			err = c.Producer.CommitTransaction(nil)
+			if err != nil {
+				log.Error().Err(err).Msg("Processor: Failed to commit transaction")
+
+				err = c.Producer.AbortTransaction(nil)
+				if err != nil {
+					log.Fatal().Err(err).Msg("")
+				}
+			}
+			log.Info().Interface("msg", msg).Msg("message delivered")
+			// Start a new transaction
+			err = c.BeginTransaction()
+			if err != nil {
+				log.Fatal().Err(err).Msg("")
+			}
 		case <-interrupt:
 			log.Info().Msg("interrupt")
 
@@ -97,134 +117,115 @@ func (c *Connector) CEtherLogsListener(client *ethclient.Client, logs chan types
 	return sub
 }
 
-func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log, sink chan *kafkautils.Message) {
+func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log) (proto.Message, error) {
 	// TODO: Add timestamp from block since logs don't include timestamp
-	// Writes to out chan
-	err := c.WriteEventToChan(contractAbi, evLog, sink)
-	if err != nil {
-		log.Error().Err(err).
-			Interface("evLog", evLog).
-			Msg("processLogEvent error")
-	}
-}
-
-// WriteEventToChan parses the event and writes it to the channel for kafka.
-func (c *Connector) WriteEventToChan(contractAbi abi.ABI, evLog types.Log, out chan<- *kafkautils.Message) error {
 	ev, err := contractAbi.EventByID(evLog.Topics[0])
 	if err != nil {
 		log.Warn().Err(err).Msg("EventByID error, skipping")
-		return err
+		return nil, err
 	}
 
 	if ev == nil {
 		log.Warn().Msg("ignore if event id isn't defined in a partial ABI")
-		return nil
+		return nil, err
 	}
+
+	var msg proto.Message
 
 	switch ev.Name {
 	case "Mint":
 		event := new(ctoken.CompoundMint)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack Mint event error")
-			return nil
+			return nil, err
 		}
-		out <- &kafkautils.Message{
-			Topic: c.Topics["mint"],
-			Key:   kafkautils.NewKey(Namespace, evLog.Address.Hex()),
-			ProtoMsg: &ctoken.Mint{
-				Ts:         timestamppb.Now(),
-				Block:      evLog.BlockNumber,
-				Idx:        uint64(evLog.Index),
-				Tx:         evLog.TxHash.Bytes(),
-				Minter:     event.Minter.Bytes(),
-				MintAmount: event.MintAmount.Bytes(),
-				MintTokens: event.MintTokens.Bytes(),
-			},
+		msg = &ctoken.Mint{
+			Ts:         timestamppb.Now(),
+			Block:      evLog.BlockNumber,
+			Idx:        uint64(evLog.Index),
+			Tx:         evLog.TxHash.Bytes(),
+			Minter:     event.Minter.Bytes(),
+			MintAmount: event.MintAmount.Bytes(),
+			MintTokens: event.MintTokens.Bytes(),
 		}
+
+		break
 	case "Redeem":
 		event := new(ctoken.CompoundRedeem)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack Redeem event error")
-			return nil
+			return nil, err
 		}
-		out <- &kafkautils.Message{
-			Topic: c.Topics["redeem"],
-			Key:   kafkautils.NewKey(Namespace, evLog.Address.Hex()),
-			ProtoMsg: &ctoken.Redeem{
-				Ts:           timestamppb.Now(),
-				Block:        evLog.BlockNumber,
-				Idx:          uint64(evLog.Index),
-				Tx:           evLog.TxHash.Bytes(),
-				Redeemer:     event.Redeemer.Bytes(),
-				RedeemAmount: event.RedeemAmount.Bytes(),
-				RedeemTokens: event.RedeemTokens.Bytes(),
-			},
+		msg = &ctoken.Redeem{
+			Ts:           timestamppb.Now(),
+			Block:        evLog.BlockNumber,
+			Idx:          uint64(evLog.Index),
+			Tx:           evLog.TxHash.Bytes(),
+			Redeemer:     event.Redeemer.Bytes(),
+			RedeemAmount: event.RedeemAmount.Bytes(),
+			RedeemTokens: event.RedeemTokens.Bytes(),
 		}
+
+		break
 	case "Borrow":
 		event := new(ctoken.CompoundBorrow)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack Borrow event error")
-			return nil
+			return nil, err
 		}
-		out <- &kafkautils.Message{
-			Topic: c.Topics["borrow"],
-			Key:   kafkautils.NewKey(Namespace, evLog.Address.Hex()),
-			ProtoMsg: &ctoken.Borrow{
-				Ts:             timestamppb.Now(),
-				Block:          evLog.BlockNumber,
-				Idx:            uint64(evLog.Index),
-				Tx:             evLog.TxHash.Bytes(),
-				Borrower:       event.Borrower.Bytes(),
-				BorrowAmount:   event.BorrowAmount.Bytes(),
-				AccountBorrows: event.AccountBorrows.Bytes(),
-				TotalBorrows:   event.TotalBorrows.Bytes(),
-			},
+		msg = &ctoken.Borrow{
+			Ts:             timestamppb.Now(),
+			Block:          evLog.BlockNumber,
+			Idx:            uint64(evLog.Index),
+			Tx:             evLog.TxHash.Bytes(),
+			Borrower:       event.Borrower.Bytes(),
+			BorrowAmount:   event.BorrowAmount.Bytes(),
+			AccountBorrows: event.AccountBorrows.Bytes(),
+			TotalBorrows:   event.TotalBorrows.Bytes(),
 		}
+
+		break
 	case "RepayBorrow":
 		event := new(ctoken.CompoundRepayBorrow)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack RepayBorrow event error")
-			return nil
+			return nil, err
 		}
-		out <- &kafkautils.Message{
-			Topic: c.Topics["repayborrow"],
-			Key:   kafkautils.NewKey(Namespace, evLog.Address.Hex()),
-			ProtoMsg: &ctoken.RepayBorrow{
-				Ts:             timestamppb.Now(),
-				Block:          evLog.BlockNumber,
-				Idx:            uint64(evLog.Index),
-				Tx:             evLog.TxHash.Bytes(),
-				Payer:          event.Payer.Bytes(),
-				Borrower:       event.Borrower.Bytes(),
-				RepayAmount:    event.RepayAmount.Bytes(),
-				AccountBorrows: event.AccountBorrows.Bytes(),
-				TotalBorrows:   event.TotalBorrows.Bytes(),
-			},
+		msg = &ctoken.RepayBorrow{
+			Ts:             timestamppb.Now(),
+			Block:          evLog.BlockNumber,
+			Idx:            uint64(evLog.Index),
+			Tx:             evLog.TxHash.Bytes(),
+			Payer:          event.Payer.Bytes(),
+			Borrower:       event.Borrower.Bytes(),
+			RepayAmount:    event.RepayAmount.Bytes(),
+			AccountBorrows: event.AccountBorrows.Bytes(),
+			TotalBorrows:   event.TotalBorrows.Bytes(),
 		}
+
+		break
 	case "LiquidateBorrow":
 		event := new(ctoken.CompoundLiquidateBorrow)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack LiquidateBorrow event error")
-			return nil
+			return nil, err
 		}
-		out <- &kafkautils.Message{
-			Topic: c.Topics["liquidateborrow"],
-			Key:   kafkautils.NewKey(Namespace, evLog.Address.Hex()),
-			ProtoMsg: &ctoken.LiquidateBorrow{
-				Ts:               timestamppb.Now(),
-				Block:            evLog.BlockNumber,
-				Idx:              uint64(evLog.Index),
-				Tx:               evLog.TxHash.Bytes(),
-				Liquidator:       event.Liquidator.Bytes(),
-				Borrower:         event.Borrower.Bytes(),
-				RepayAmount:      event.RepayAmount.Bytes(),
-				CTokenCollateral: event.CTokenCollateral.Bytes(),
-				SeizeTokens:      event.SeizeTokens.Bytes(),
-			},
+		msg = &ctoken.LiquidateBorrow{
+			Ts:               timestamppb.Now(),
+			Block:            evLog.BlockNumber,
+			Idx:              uint64(evLog.Index),
+			Tx:               evLog.TxHash.Bytes(),
+			Liquidator:       event.Liquidator.Bytes(),
+			Borrower:         event.Borrower.Bytes(),
+			RepayAmount:      event.RepayAmount.Bytes(),
+			CTokenCollateral: event.CTokenCollateral.Bytes(),
+			SeizeTokens:      event.SeizeTokens.Bytes(),
 		}
+
+		break
 	}
 
-	return nil
+	return msg, nil
 }
 
 func ConvertRawAddress(rawAddresses ...string) []common.Address {
