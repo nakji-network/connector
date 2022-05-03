@@ -131,23 +131,6 @@ func (c *Connector) SubscribeExample() error {
 	return nil
 }
 
-// MakeQueueTransactionSink creates a channel of kafka Messages. All messages sent to
-// this channel will be wrapped in a transaction and published to the message queue.
-func (c *Connector) MakeQueueTransactionSink() (chan *kafkautils.Message, error) {
-	if !c.producerStarted {
-		err := c.startProducer()
-		if err != nil {
-			return nil, err
-		}
-		c.producerStarted = true
-	}
-
-	sink := make(chan *kafkautils.Message, 10000)
-	go c.Producer.WriteAndCommitSink(sink)
-
-	return sink, nil
-}
-
 // ProduceMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message) error {
 	if !c.producerStarted {
