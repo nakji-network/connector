@@ -120,6 +120,11 @@ func InitConfig() *viper.Viper {
 		fmt.Printf("Using defaults: %s\n", err)
 		//panic(fmt.Errorf("Fatal error config file: %s \n", err))
 	}
+	//SetFlags(v)
+
+	if err = ValidateConfig(v); err != nil {
+		panic(fmt.Errorf("%s \n", err))
+	}
 
 	InitLogging(v)
 

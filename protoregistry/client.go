@@ -22,8 +22,11 @@ func NewClient(host string) *Client {
 	return &Client{host}
 }
 
+// TopicTypes is a map where topic schemas are keys and proto.Message are values.
+type TopicTypes map[string]proto.Message
+
 // RegisterDynamicTopics registers kafka topic and protobuf type mappings
-func (c *Client) RegisterDynamicTopics(topicTypes map[string]proto.Message, msgType kafkautils.MsgType) error {
+func (c *Client) RegisterDynamicTopics(topicTypes TopicTypes, msgType kafkautils.MsgType) error {
 	tpmList := buildTopicProtoMsgs(topicTypes, msgType)
 
 	u := url.URL{Scheme: "http", Host: c.host, Path: "/v1/register"}
@@ -63,7 +66,7 @@ type TopicSubscription struct {
 	ShouldUpdate   bool `json:"should_update"`
 }
 
-func buildTopicProtoMsgs(topicTypes map[string]proto.Message, msgType kafkautils.MsgType) []TopicProtoMsg {
+func buildTopicProtoMsgs(topicTypes TopicTypes, msgType kafkautils.MsgType) []TopicProtoMsg {
 	var tpmList []TopicProtoMsg
 
 	for k, v := range topicTypes {

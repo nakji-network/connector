@@ -6,6 +6,7 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/heptiolabs/healthcheck"
+	"github.com/nakji-network/connector/protoregistry"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"google.golang.org/protobuf/proto"
@@ -22,20 +23,22 @@ type Connector struct {
 	Health   healthcheck.Handler
 
 	env             kafkautils.Env
-	msgType         kafkautils.MsgType
+	MsgType         kafkautils.MsgType
 	kafkaUrl        string
 	producerStarted bool
 	consumerStarted bool
 	*kafkautils.Producer
 	*kafkautils.Consumer
 
-	ChainClients *chain.Clients
+	ChainClients     *chain.Clients
+	ProtoRegistryCli *protoregistry.Client
 }
 
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.
 func NewConnector(path string) *Connector {
 	conf := config.GetConfig()
 	conf.SetDefault("kafka.env", "dev")
+	conf.SetDefault("protoregistry.host", "localhost:9191")
 
 	rpcMap := make(map[string]chain.RPCs)
 	err := conf.UnmarshalKey("rpcs", &rpcMap)
@@ -43,13 +46,17 @@ func NewConnector(path string) *Connector {
 		log.Fatal().Err(err).Msg("Could not load RPC list from config file")
 	}
 
+	// Create a proto registry client
+	prc := protoregistry.NewClient(conf.GetString("protoregistry.host"))
+
 	c := &Connector{
-		manifest:     LoadManifest(path),
-		env:          kafkautils.Env(conf.GetString("kafka.env")),
-		msgType:      kafkautils.Fct,
-		kafkaUrl:     conf.GetString("kafka.url"),
-		ChainClients: chain.NewClients(rpcMap),
-		Health:       healthcheck.NewHandler(),
+		manifest:         LoadManifest(path),
+		env:              kafkautils.Env(conf.GetString("kafka.env")),
+		MsgType:          kafkautils.Fct,
+		kafkaUrl:         conf.GetString("kafka.url"),
+		ChainClients:     chain.NewClients(rpcMap),
+		Health:           healthcheck.NewHandler(),
+		ProtoRegistryCli: prc,
 	}
 
 	c.Config = conf
@@ -236,7 +243,7 @@ func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
 func (c *Connector) GenerateTopicFromProto(msg proto.Message) kafkautils.Topic {
 	return kafkautils.NewTopic(
 		c.env,
-		c.msgType,
+		c.MsgType,
 		c.manifest.Author,
 		c.manifest.Name,
 		c.manifest.Version.Version,

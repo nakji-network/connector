@@ -11,18 +11,17 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/nakji-network/connector/protoregistry"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/nakji-network/connector"
 	"github.com/nakji-network/connector/examples/compound/ctoken"
-	"github.com/nakji-network/connector/kafkautils"
 )
 
 type Connector struct {
 	*connector.Connector
-	Topics            map[string]kafkautils.Topic
 	ContractAddresses []common.Address
 	Chain             string // chain override, since ChainClients.Ethereum supports overriding with any evm chain
 }
@@ -42,6 +41,13 @@ func (c *Connector) Start() {
 	contractAbi, err := abi.JSON(strings.NewReader(ctoken.CompoundABI))
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to read CEther abi")
+	}
+
+	// Register topic and protobuf type mappings
+	tt := c.buildTopicTypes()
+	err = c.ProtoRegistryCli.RegisterDynamicTopics(tt, c.MsgType)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to register dynamic topics")
 	}
 
 	// Get the initialized Ethereum client. For more Nakji supported clients see connector/chain/
@@ -70,6 +76,7 @@ func (c *Connector) Start() {
 			if err != nil {
 				log.Error().Err(err).Msg("failed to process log event")
 			}
+			// Not sure what value needs to be passed as subject
 			err = c.ProduceMessage(namespace, evLog.Address.Hex(), msg)
 			if err != nil {
 				log.Error().Err(err).Msg("Kafka write proto")
@@ -226,6 +233,18 @@ func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log) (proto
 	}
 
 	return msg, nil
+}
+
+func (c *Connector) buildTopicTypes() protoregistry.TopicTypes {
+	tt := make(map[string]proto.Message)
+
+	tt[c.GenerateTopicFromProto(&ctoken.Mint{}).Schema()] = &ctoken.Mint{}
+	tt[c.GenerateTopicFromProto(&ctoken.Redeem{}).Schema()] = &ctoken.Redeem{}
+	tt[c.GenerateTopicFromProto(&ctoken.Borrow{}).Schema()] = &ctoken.Borrow{}
+	tt[c.GenerateTopicFromProto(&ctoken.RepayBorrow{}).Schema()] = &ctoken.RepayBorrow{}
+	tt[c.GenerateTopicFromProto(&ctoken.LiquidateBorrow{}).Schema()] = &ctoken.LiquidateBorrow{}
+
+	return tt
 }
 
 func ConvertRawAddress(rawAddresses ...string) []common.Address {
