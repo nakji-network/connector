@@ -31,7 +31,7 @@ type Connector struct {
 }
 
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.
-func NewConnector(path string) *Connector {
+func NewConnector() *Connector {
 	conf := config.GetConfig()
 	conf.SetDefault("kafka.env", "dev")
 
@@ -42,7 +42,7 @@ func NewConnector(path string) *Connector {
 	}
 
 	c := &Connector{
-		manifest:     LoadManifest(path),
+		manifest:     LoadManifest(),
 		env:          conf.GetString("kafka.env"),
 		kafkaUrl:     conf.GetString("kafka.url"),
 		ChainClients: chain.NewClients(rpcMap),

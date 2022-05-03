@@ -16,8 +16,10 @@ type manifest struct {
 
 // TODO: tell user to use embed to embed the manifest.yaml file or else they'll have to manually keep the file with the exe
 
-func LoadManifest(path string) *manifest {
-	yfile, err := ioutil.ReadFile(path)
+func LoadManifest() *manifest {
+	log.Info().Msg("Loading Manifest")
+
+	yfile, err := ioutil.ReadFile("manifest.yaml")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to open file manifest.yaml.")
 	}
