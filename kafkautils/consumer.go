@@ -3,6 +3,7 @@
 package kafkautils
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -20,7 +21,8 @@ func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap
 		"bootstrap.servers": brokers,
 		"group.id":          groupID,
 		//"group.instance.id": groupInstanceID,
-		"session.timeout.ms":              6000,
+		"session.timeout.ms":              30000, // default is at 45000
+		"heartbeat.interval.ms":           2000,  // default is at 3000. must be set lower than session.timeout.ms, but typically should be set no higher than 1/3 of that value
 		"enable.auto.commit":              false,
 		"fetch.wait.max.ms":               500, // this is the default, maybe too slow
 		"go.events.channel.enable":        true,
@@ -49,17 +51,28 @@ func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap
 	return &c, nil
 }
 
+func (c *Consumer) Messages() chan Message {
+	return c.MessageCh
+}
+
 // Process kafka events and forward to Consumer.MessageCh
-func (c *Consumer) SubscribeProto(topics []Topic) error {
-	log.Info().Strs("topics", TopicsStrings(topics)).Msg("kafka subscribe")
-	err := c.SubscribeTopics(TopicsStrings(topics), nil)
+func (c *Consumer) SubscribeProto(topics []string) error {
+	log.Info().Strs("topics", topics).Msg("kafka subscribe")
+	err := c.SubscribeTopics(topics, nil)
 	if err != nil {
-		log.Error().Msg("Kafka subscribe failure")
+		log.Error().Msg("kafka subscribe failure")
 		return err
 	}
+	return nil
+}
 
+//	Listen will forward incoming events to message channel. It should be called on a separate goroutine.
+func (c *Consumer) Listen(ctx context.Context) {
 	for {
 		select {
+		case <-ctx.Done():
+			log.Info().Msg("consumer listening to kafka is cancelled")
+			return
 		case ev := <-c.Events():
 			switch e := ev.(type) {
 			case kafka.AssignedPartitions:
@@ -89,7 +102,6 @@ func (c *Consumer) SubscribeProto(topics []Topic) error {
 					log.Error().Err(err).Interface("topic", t).Msg("Unable to UnmarshalProto topic")
 					continue
 				}
-
 				c.MessageCh <- Message{
 					Message:  e,
 					Topic:    t,

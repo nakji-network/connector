@@ -3,35 +3,35 @@
 package kafkautils
 
 import (
-	"bytes"
 	"fmt"
+	"strings"
 )
 
-var KeyDelimiter = []byte(".")
+const KeyDelimiter = "."
 
 // Kafka key struct. Keep lowercase.
 type Key struct {
-	Namespace []byte
-	Subject   []byte
+	Namespace string `json:"namespace"`
+	Subject   string `json:"subject"`
 }
 
 func NewKey(ns, s string) Key {
 	return Key{
-		[]byte(ns),
-		[]byte(s),
+		ns,
+		s,
 	}
 }
 
 func (k Key) Bytes() []byte {
-	return bytes.Join([][]byte{k.Namespace, k.Subject}, KeyDelimiter)
+	return []byte(k.String())
 }
 
 func (k Key) String() string {
-	return string(k.Bytes())
+	return strings.Join([]string{k.Namespace, k.Subject}, KeyDelimiter)
 }
 
 func ParseKey(s []byte) (Key, error) {
-	k := bytes.Split(s, KeyDelimiter)
+	k := strings.Split(string(s), KeyDelimiter)
 	if len(k) != 2 {
 		return Key{}, fmt.Errorf("Cannot parse key, needs 2 parts separated by \"%s\": %s", KeyDelimiter, string(s))
 	}
@@ -42,7 +42,7 @@ func ParseKey(s []byte) (Key, error) {
 // eg. [[namespace, x], [subject, y]]
 func (k Key) Tuple() [][]string {
 	return [][]string{
-		{"ns", string(k.Namespace)},
-		{"s", string(k.Subject)},
+		{"ns", k.Namespace},
+		{"s", k.Subject},
 	}
 }
