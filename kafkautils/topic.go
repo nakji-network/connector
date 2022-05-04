@@ -11,29 +11,35 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var TopicDelimiter = "."
-
-type env string
+type Env string
 
 const (
-	prod    env = "prod"
+	prod    Env = "prod"
 	staging     = "staging"
 	dev         = "dev"
 	test        = "test"
 )
 
-type msgType string
+const (
+	TopicContextSeparator   string = "."
+	TopicContractSeparator  string = "_"
+	TopicAggregateSeparator string = "-"
+	TopicWildcardSuffix     string = "-*"
+	TopicNumSegments        int    = 4
+)
+
+type MsgType string
 
 const (
-	fct msgType = "fct"
-	cdc         = "cdc"
-	cmd         = "cmd"
-	sys         = "sys"
+	Fct MsgType = "fct"
+	Cdc         = "cdc"
+	Cmd         = "cmd"
+	Sys         = "sys"
 )
 
 type Topic struct {
-	Env           env
-	MsgType       msgType
+	Env           Env
+	MsgType       MsgType
 	Author        string
 	ConnectorName string
 	Version       *semver.Version
@@ -43,7 +49,7 @@ type Topic struct {
 
 // String generates the topic string
 func (t Topic) String() string {
-	return strings.Join([]string{string(t.Env), string(t.MsgType), t.Schema()}, TopicDelimiter)
+	return strings.Join([]string{string(t.Env), string(t.MsgType), t.Schema()}, TopicContextSeparator)
 }
 
 // Schema generates the schema string
@@ -53,13 +59,13 @@ func (t Topic) Schema() string {
 		t.ConnectorName,
 		strings.ReplaceAll(t.Version.String(), ".", "_"),
 		t.EventName,
-	}, TopicDelimiter)
+	}, TopicContextSeparator)
 }
 
 func NewTopic(en, ty, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
 	return Topic{
-		Env:           env(en),
-		MsgType:       msgType(ty),
+		Env:           Env(en),
+		MsgType:       MsgType(ty),
 		Author:        author,
 		ConnectorName: connectorName,
 		Version:       version,
@@ -72,13 +78,13 @@ func NewTopic(en, ty, author, connectorName string, version *semver.Version, msg
 // topic strings that start with . (eg .fct.nakji.ethereum.0_0_0.chain_block) get set `dev` prefix.
 // Use second argument to override env (only for initialization at start of program)
 func ParseTopic(s string, e ...string) (Topic, error) {
-	p := strings.Split(s, TopicDelimiter)
+	p := strings.Split(s, TopicContextSeparator)
 
 	if len(p) != 6 {
 		return Topic{}, fmt.Errorf("cannot parse topic, does not have 6 segments: %s", s)
 	}
 
-	schema := strings.SplitAfterN(s, TopicDelimiter, 3)[2]
+	schema := strings.SplitAfterN(s, TopicContextSeparator, 3)[2]
 	version, err := semver.NewVersion(strings.ReplaceAll(p[4], "_", "."))
 	if err != nil {
 		return Topic{}, err
@@ -90,8 +96,8 @@ func ParseTopic(s string, e ...string) (Topic, error) {
 	}
 
 	res := Topic{
-		Env:           env(p[0]),
-		MsgType:       msgType(p[1]),
+		Env:           Env(p[0]),
+		MsgType:       MsgType(p[1]),
 		Author:        p[2],
 		ConnectorName: p[3],
 		Version:       version,
@@ -101,7 +107,7 @@ func ParseTopic(s string, e ...string) (Topic, error) {
 
 	// override env
 	if len(e) == 1 {
-		res.Env = env(e[0])
+		res.Env = Env(e[0])
 	}
 
 	if res.Env == "" {
@@ -146,7 +152,7 @@ func TopicsStrings(topics []Topic) []string {
 // protobuf bytes -> struct
 func (t *Topic) UnmarshalProto(data []byte) (proto.Message, error) {
 	if t.pb == nil {
-		return nil, fmt.Errorf("Cannot unmarshal proto for topic %s", t)
+		return nil, fmt.Errorf("cannot unmarshal proto for topic %s", t)
 	}
 	return t.pb, proto.Unmarshal(data, t.pb)
 }
