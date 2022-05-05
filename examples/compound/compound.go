@@ -155,8 +155,6 @@ func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log) (proto
 			MintAmount: event.MintAmount.Bytes(),
 			MintTokens: event.MintTokens.Bytes(),
 		}
-
-		break
 	case "Redeem":
 		event := new(ctoken.CompoundRedeem)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
@@ -172,8 +170,6 @@ func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log) (proto
 			RedeemAmount: event.RedeemAmount.Bytes(),
 			RedeemTokens: event.RedeemTokens.Bytes(),
 		}
-
-		break
 	case "Borrow":
 		event := new(ctoken.CompoundBorrow)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
@@ -190,8 +186,6 @@ func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log) (proto
 			AccountBorrows: event.AccountBorrows.Bytes(),
 			TotalBorrows:   event.TotalBorrows.Bytes(),
 		}
-
-		break
 	case "RepayBorrow":
 		event := new(ctoken.CompoundRepayBorrow)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
@@ -209,8 +203,6 @@ func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log) (proto
 			AccountBorrows: event.AccountBorrows.Bytes(),
 			TotalBorrows:   event.TotalBorrows.Bytes(),
 		}
-
-		break
 	case "LiquidateBorrow":
 		event := new(ctoken.CompoundLiquidateBorrow)
 		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
@@ -228,8 +220,6 @@ func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log) (proto
 			CTokenCollateral: event.CTokenCollateral.Bytes(),
 			SeizeTokens:      event.SeizeTokens.Bytes(),
 		}
-
-		break
 	}
 
 	return msg, nil
