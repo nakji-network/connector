@@ -3,19 +3,16 @@
 package kafkautils
 
 import (
-	"context"
-	"fmt"
-	"os"
-
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/rs/zerolog/log"
 )
 
 type Consumer struct {
 	*kafka.Consumer
-	MessageCh chan Message // kafka messages + Topic and proto message
+	Messages <-chan Message
 }
 
+// NewConsumer prepares a message queue consumer. Subscribe to proto messages on .Messages chan
 func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap) (*Consumer, error) {
 	defaultOpts := kafka.ConfigMap{
 		"bootstrap.servers": brokers,
@@ -47,43 +44,33 @@ func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap
 	if err != nil {
 		return nil, err
 	}
-	c := Consumer{cons, make(chan Message, 1)}
+
+	c := Consumer{Consumer: cons}
+	c.Messages = c.kafkaEventToProtoPipe(c.Events())
+
 	return &c, nil
 }
 
-func (c *Consumer) Messages() chan Message {
-	return c.MessageCh
+// SubscribeProto subscribes to the provided list of topics. This replaces the current subscription.
+func (c *Consumer) SubscribeTopics(topics []Topic) error {
+	log.Debug().Strs("topics", TopicsStrings(topics)).Msg("kafka subscribe")
+	return c.Consumer.SubscribeTopics(TopicsStrings(topics), nil)
 }
 
-// Process kafka events and forward to Consumer.MessageCh
-func (c *Consumer) SubscribeProto(topics []string) error {
-	log.Info().Strs("topics", topics).Msg("kafka subscribe")
-	err := c.SubscribeTopics(topics, nil)
-	if err != nil {
-		log.Error().Msg("kafka subscribe failure")
-		return err
-	}
-	return nil
-}
-
-//	Listen will forward incoming events to message channel. It should be called on a separate goroutine.
-func (c *Consumer) Listen(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			log.Info().Msg("consumer listening to kafka is cancelled")
-			return
-		case ev := <-c.Events():
+// kafkaEventToProtoPipe converts and sends incoming kafka events to proto channel.
+func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
+	out := make(chan Message)
+	go func() {
+		for ev := range in {
 			switch e := ev.(type) {
 			case kafka.AssignedPartitions:
-				fmt.Fprintf(os.Stderr, "%% %v\n", e)
+				log.Info().Interface("partitions", e.Partitions).Msg("kafka assigned partitions")
 				c.Assign(e.Partitions)
 			case kafka.RevokedPartitions:
-				fmt.Fprintf(os.Stderr, "%% %v\n", e)
+				log.Info().Interface("partitions", e.Partitions).Msg("kafka revoked partitions")
 				c.Unassign()
 			case *kafka.Message:
-				//log.Debug().Msgf("%% Message on %s:\n%s\n",
-				//e.TopicPartition, string(e.Value))
+				//log.Debug().Str("topicPartition", e.TopicPartition.String()).Str("val", string(e.Value)).Msg("kafka received message")
 
 				k, err := ParseKey(e.Key)
 				if err != nil {
@@ -102,7 +89,7 @@ func (c *Consumer) Listen(ctx context.Context) {
 					log.Error().Err(err).Interface("topic", t).Msg("Unable to UnmarshalProto topic")
 					continue
 				}
-				c.MessageCh <- Message{
+				out <- Message{
 					Message:  e,
 					Topic:    t,
 					Key:      k,
@@ -110,13 +97,15 @@ func (c *Consumer) Listen(ctx context.Context) {
 				}
 
 			case kafka.PartitionEOF:
-				log.Info().Interface("event", e).Msg("%% Reached")
+				log.Info().Str("topic", *e.Topic).Msg("EOF Reached")
 			case kafka.Error:
 				// Errors should generally be considered as informational, the client will try to automatically recover
-				fmt.Fprintf(os.Stderr, "%% Error: %v\n", e)
+				log.Warn().Err(e).Msg("")
 			}
 		}
-	}
+		close(out)
+	}()
+	return out
 }
 
 // rewindConsumerPosition rewinds the consumer to the last committed offset or
