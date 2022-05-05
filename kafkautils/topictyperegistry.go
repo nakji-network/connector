@@ -48,3 +48,28 @@ func (r TTR) Load(b map[string]proto.Message) {
 		r[k] = v
 	}
 }
+
+func GetActiveSchemas(queryParams []string) map[string]bool {
+	schemas := make(map[string]bool)
+	if len(queryParams) == 0 {
+		for k := range TopicTypeRegistry {
+			schemas[k] = true
+		}
+
+	} else {
+		for _, query := range queryParams {
+			stream, err := NewSchema(query)
+			if err != nil {
+				continue
+			}
+
+			for k := range TopicTypeRegistry {
+				if stream.hasSchema(k) {
+					schemas[k] = true
+				}
+			}
+		}
+	}
+
+	return schemas
+}

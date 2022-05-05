@@ -11,8 +11,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var TopicDelimiter = "."
-
 type Env string
 
 const (
@@ -20,6 +18,14 @@ const (
 	staging     = "staging"
 	dev         = "dev"
 	test        = "test"
+)
+
+const (
+	TopicContextSeparator   string = "."
+	TopicContractSeparator  string = "_"
+	TopicAggregateSeparator string = "-"
+	TopicWildcardSuffix     string = "-*"
+	TopicNumSegments        int    = 4
 )
 
 type MsgType string
@@ -43,7 +49,7 @@ type Topic struct {
 
 // String generates the topic string
 func (t Topic) String() string {
-	return strings.Join([]string{string(t.Env), string(t.MsgType), t.Schema()}, TopicDelimiter)
+	return strings.Join([]string{string(t.Env), string(t.MsgType), t.Schema()}, TopicContextSeparator)
 }
 
 // Schema generates the schema string
@@ -53,7 +59,7 @@ func (t Topic) Schema() string {
 		t.ConnectorName,
 		strings.ReplaceAll(t.Version.String(), ".", "_"),
 		t.EventName,
-	}, TopicDelimiter)
+	}, TopicContextSeparator)
 }
 
 func NewTopic(en Env, ty MsgType, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
@@ -72,13 +78,13 @@ func NewTopic(en Env, ty MsgType, author, connectorName string, version *semver.
 // topic strings that start with . (eg .fct.nakji.ethereum.0_0_0.chain_block) get set `dev` prefix.
 // Use second argument to override env (only for initialization at start of program)
 func ParseTopic(s string, e ...string) (Topic, error) {
-	p := strings.Split(s, TopicDelimiter)
+	p := strings.Split(s, TopicContextSeparator)
 
 	if len(p) != 6 {
 		return Topic{}, fmt.Errorf("cannot parse topic, does not have 6 segments: %s", s)
 	}
 
-	schema := strings.SplitAfterN(s, TopicDelimiter, 3)[2]
+	schema := strings.SplitAfterN(s, TopicContextSeparator, 3)[2]
 	version, err := semver.NewVersion(strings.ReplaceAll(p[4], "_", "."))
 	if err != nil {
 		return Topic{}, err

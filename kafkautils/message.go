@@ -5,7 +5,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// kafka.Message wrapper to store protoMsg
+// Message is a kafka.Message wrapper to store protoMsg
 // this way, the kafka event stays together
 type Message struct {
 	*kafka.Message
@@ -14,7 +14,7 @@ type Message struct {
 	ProtoMsg proto.Message
 }
 
-// Get the field names from the ProtoMsg
+// FieldNames gets the field names from the ProtoMsg
 func (m *Message) FieldNames() []string {
 	fieldDescs := m.ProtoMsg.ProtoReflect().Descriptor().Fields()
 

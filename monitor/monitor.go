@@ -28,7 +28,7 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(kafkaLastWriteTime)
+	prometheus.Register(kafkaLastWriteTime)
 }
 
 // StartMonitor initiates a monitor and uses connector's name as the label value,

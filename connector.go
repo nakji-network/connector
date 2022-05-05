@@ -96,7 +96,7 @@ func (c *Connector) id() string {
 // 		// commit to kafka to acknowledge receipt
 // 		consumer.CommitMessage(msg.Message)
 // 	}
-func (c *Connector) Subscribe(topics []kafkautils.Topic, overrideOpts ...kafka.ConfigMap) (chan kafkautils.Message, error) {
+func (c *Connector) Subscribe(topics []kafkautils.Topic, overrideOpts ...kafka.ConfigMap) (<-chan kafkautils.Message, error) {
 	if !c.consumerStarted {
 		err := c.startConsumer(overrideOpts...)
 		if err != nil {
@@ -105,13 +105,12 @@ func (c *Connector) Subscribe(topics []kafkautils.Topic, overrideOpts ...kafka.C
 		c.consumerStarted = true
 	}
 
-	err := c.SubscribeProto(topics)
-	if err != nil {
-		log.Error().Err(err).Msgf("kafka subscribe proto error")
+	if err := c.SubscribeTopics(topics); err != nil {
+		log.Error().Err(err).Msg("kafka subscribe proto error")
 		return nil, err
 	}
 
-	return c.Consumer.MessageCh, nil
+	return c.Consumer.Messages, nil
 }
 
 func (c *Connector) SubscribeExample() error {
@@ -170,7 +169,7 @@ func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message)
 
 	topic := c.GenerateTopicFromProto(msg)
 	key := kafkautils.NewKey(namespace, subject)
-	return c.WriteKafkaMessages(topic, key, msg)
+	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
 }
 
 // ProduceMessage sends protobuf to message queue with a Topic and Key.

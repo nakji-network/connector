@@ -3,24 +3,23 @@
 package kafkautils
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/rs/zerolog/log"
 )
 
 type Consumer struct {
 	*kafka.Consumer
-	MessageCh chan Message // kafka messages + Topic and proto message
+	Messages <-chan Message
 }
 
+// NewConsumer prepares a message queue consumer. Subscribe to proto messages on .Messages chan
 func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap) (*Consumer, error) {
 	defaultOpts := kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 		"group.id":          groupID,
 		//"group.instance.id": groupInstanceID,
-		"session.timeout.ms":              6000,
+		"session.timeout.ms":              30000, // default is at 45000
+		"heartbeat.interval.ms":           2000,  // default is at 3000. must be set lower than session.timeout.ms, but typically should be set no higher than 1/3 of that value
 		"enable.auto.commit":              false,
 		"fetch.wait.max.ms":               500, // this is the default, maybe too slow
 		"go.events.channel.enable":        true,
@@ -45,32 +44,33 @@ func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap
 	if err != nil {
 		return nil, err
 	}
-	c := Consumer{cons, make(chan Message, 1)}
+
+	c := Consumer{Consumer: cons}
+	c.Messages = c.kafkaEventToProtoPipe(c.Events())
+
 	return &c, nil
 }
 
-// Process kafka events and forward to Consumer.MessageCh
-func (c *Consumer) SubscribeProto(topics []Topic) error {
-	log.Info().Strs("topics", TopicsStrings(topics)).Msg("kafka subscribe")
-	err := c.SubscribeTopics(TopicsStrings(topics), nil)
-	if err != nil {
-		log.Error().Msg("Kafka subscribe failure")
-		return err
-	}
+// SubscribeProto subscribes to the provided list of topics. This replaces the current subscription.
+func (c *Consumer) SubscribeTopics(topics []Topic) error {
+	log.Debug().Strs("topics", TopicsStrings(topics)).Msg("kafka subscribe")
+	return c.Consumer.SubscribeTopics(TopicsStrings(topics), nil)
+}
 
-	for {
-		select {
-		case ev := <-c.Events():
+// kafkaEventToProtoPipe converts and sends incoming kafka events to proto channel.
+func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
+	out := make(chan Message)
+	go func() {
+		for ev := range in {
 			switch e := ev.(type) {
 			case kafka.AssignedPartitions:
-				fmt.Fprintf(os.Stderr, "%% %v\n", e)
+				log.Info().Interface("partitions", e.Partitions).Msg("kafka assigned partitions")
 				c.Assign(e.Partitions)
 			case kafka.RevokedPartitions:
-				fmt.Fprintf(os.Stderr, "%% %v\n", e)
+				log.Info().Interface("partitions", e.Partitions).Msg("kafka revoked partitions")
 				c.Unassign()
 			case *kafka.Message:
-				//log.Debug().Msgf("%% Message on %s:\n%s\n",
-				//e.TopicPartition, string(e.Value))
+				//log.Debug().Str("topicPartition", e.TopicPartition.String()).Str("val", string(e.Value)).Msg("kafka received message")
 
 				k, err := ParseKey(e.Key)
 				if err != nil {
@@ -89,8 +89,7 @@ func (c *Consumer) SubscribeProto(topics []Topic) error {
 					log.Error().Err(err).Interface("topic", t).Msg("Unable to UnmarshalProto topic")
 					continue
 				}
-
-				c.MessageCh <- Message{
+				out <- Message{
 					Message:  e,
 					Topic:    t,
 					Key:      k,
@@ -98,13 +97,15 @@ func (c *Consumer) SubscribeProto(topics []Topic) error {
 				}
 
 			case kafka.PartitionEOF:
-				log.Info().Interface("event", e).Msg("%% Reached")
+				log.Info().Str("topic", *e.Topic).Msg("EOF Reached")
 			case kafka.Error:
 				// Errors should generally be considered as informational, the client will try to automatically recover
-				fmt.Fprintf(os.Stderr, "%% Error: %v\n", e)
+				log.Warn().Err(e).Msg("")
 			}
 		}
-	}
+		close(out)
+	}()
+	return out
 }
 
 // rewindConsumerPosition rewinds the consumer to the last committed offset or
