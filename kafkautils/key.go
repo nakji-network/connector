@@ -1,3 +1,4 @@
+// NOTE: Deprecated, do not use for any new code
 // Helpers for Blep's kafka key naming scheme
 // Design document: https://docs.google.com/spreadsheets/d/1PmYvbw8LiBYYooAINrm4_lGWiewKA-yq-zCGbXQVNfE/edit#gid=0
 package kafkautils
