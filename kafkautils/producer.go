@@ -17,12 +17,14 @@ import (
 type ProducerInterface interface {
 	InitTransactions(context.Context) error
 	BeginTransaction() error
-	WriteKafkaMessages(string, []byte, proto.Message) error
+	WriteKafkaMessages(Topic, []byte, proto.Message) error
 	CommitTransaction(context.Context) error
 	AbortTransaction(context.Context) error
 	EnableTransactions() error
 	WriteAndCommitSink(<-chan *Message)
 	WriteAndCommit(string, []byte, proto.Message) error
+	MakeQueueTransactionSink() chan *Message
+	Close()
 }
 
 type Producer struct {
@@ -237,7 +239,7 @@ func (p *Producer) SendOffsetsToTransaction(position kafka.TopicPartitions, c *C
 }
 
 // WriteKafkaMessages writes plain kafka messages
-func (p *Producer) WriteKafkaMessages(topic Topic, key Key, value proto.Message) error {
+func (p *Producer) WriteKafkaMessages(topic Topic, key []byte, value proto.Message) error {
 	if p.closed {
 		return fmt.Errorf("Cannot write kafka message. Producer is already closed.")
 	}
@@ -254,13 +256,13 @@ func (p *Producer) WriteKafkaMessages(topic Topic, key Key, value proto.Message)
 	return p.Produce(&kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &topicString, Partition: kafka.PartitionAny},
 		Value:          pbData,
-		Key:            key.Bytes(),
+		Key:            key,
 		//Timestamp:      time.Time,
 	}, nil)
 }
 
 // WriteAndCommit writes for transactional producers, committing transaction after each write
-func (p *Producer) WriteAndCommit(topic Topic, key Key, value proto.Message) error {
+func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message) error {
 	err := p.WriteKafkaMessages(topic, key, value)
 	if err != nil {
 		return err
@@ -287,7 +289,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 	for msg := range in {
 		err := p.WriteAndCommit(
 			msg.Topic,
-			msg.Key,
+			msg.Key.Bytes(),
 			msg.ProtoMsg,
 		)
 		if err != nil {
