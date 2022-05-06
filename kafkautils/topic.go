@@ -62,10 +62,10 @@ func (t Topic) Schema() string {
 	}, TopicContextSeparator)
 }
 
-func NewTopic(en, ty, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
+func NewTopic(en Env, ty MsgType, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
 	return Topic{
-		Env:           Env(en),
-		MsgType:       MsgType(ty),
+		Env:           en,
+		MsgType:       ty,
 		Author:        author,
 		ConnectorName: connectorName,
 		Version:       version,
@@ -149,7 +149,7 @@ func TopicsStrings(topics []Topic) []string {
 	return res
 }
 
-// protobuf bytes -> struct
+// UnmarshalProto converts protobuf bytes -> struct
 func (t *Topic) UnmarshalProto(data []byte) (proto.Message, error) {
 	if t.pb == nil {
 		return nil, fmt.Errorf("cannot unmarshal proto for topic %s", t)

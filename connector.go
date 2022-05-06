@@ -6,13 +6,15 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/heptiolabs/healthcheck"
+	"github.com/nakji-network/connector/protoregistry"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/nakji-network/connector/chain"
 	"github.com/nakji-network/connector/config"
 	"github.com/nakji-network/connector/kafkautils"
 	"github.com/nakji-network/connector/monitor"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
-	"google.golang.org/protobuf/proto"
 )
 
 type Connector struct {
@@ -20,20 +22,23 @@ type Connector struct {
 	Config   *viper.Viper
 	Health   healthcheck.Handler
 
-	env             string
+	env             kafkautils.Env
+	MsgType         kafkautils.MsgType
 	kafkaUrl        string
 	producerStarted bool
 	consumerStarted bool
 	*kafkautils.Producer
 	*kafkautils.Consumer
 
-	ChainClients *chain.Clients
+	ChainClients     *chain.Clients
+	ProtoRegistryCli *protoregistry.Client
 }
 
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.
 func NewConnector() *Connector {
 	conf := config.GetConfig()
 	conf.SetDefault("kafka.env", "dev")
+	conf.SetDefault("protoregistry.host", "localhost:9191")
 
 	rpcMap := make(map[string]chain.RPCs)
 	err := conf.UnmarshalKey("rpcs", &rpcMap)
@@ -41,12 +46,17 @@ func NewConnector() *Connector {
 		log.Fatal().Err(err).Msg("Could not load RPC list from config file")
 	}
 
+	// Create a proto registry client
+	prc := protoregistry.NewClient(conf.GetString("protoregistry.host"))
+
 	c := &Connector{
-		manifest:     LoadManifest(),
-		env:          conf.GetString("kafka.env"),
-		kafkaUrl:     conf.GetString("kafka.url"),
-		ChainClients: chain.NewClients(rpcMap),
-		Health:       healthcheck.NewHandler(),
+		manifest:         LoadManifest(),
+		env:              kafkautils.Env(conf.GetString("kafka.env")),
+		MsgType:          kafkautils.Fct,
+		kafkaUrl:         conf.GetString("kafka.url"),
+		ChainClients:     chain.NewClients(rpcMap),
+		Health:           healthcheck.NewHandler(),
+		ProtoRegistryCli: prc,
 	}
 
 	c.Config = conf.Sub(c.id())
@@ -143,12 +153,12 @@ func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message)
 		c.producerStarted = true
 	}
 
-	topic := c.GenerateTopicFromProto(msg)
+	topic := c.generateTopicFromProto(msg)
 	key := kafkautils.NewKey(namespace, subject)
 	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
 }
 
-// ProduceMessage sends protobuf to message queue with a Topic and Key.
+// ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto.Message) error {
 	err := c.ProduceMessage(namespace, subject, msg)
 	if err != nil {
@@ -213,14 +223,35 @@ func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
 	return nil
 }
 
-// GenerateTopicFromProto generates message queue topic names based on the protobuf message.
+// generateTopicFromProto generates message queue topic names based on the protobuf message.
 // Event names should be prefixed with contract_ or category_ when appropriate.
-func (c *Connector) GenerateTopicFromProto(msg proto.Message) kafkautils.Topic {
+func (c *Connector) generateTopicFromProto(msg proto.Message) kafkautils.Topic {
 	return kafkautils.NewTopic(
 		c.env,
-		"fct",
+		c.MsgType,
 		c.manifest.Author,
 		c.manifest.Name,
 		c.manifest.Version.Version,
-		msg)
+		msg,
+	)
+}
+
+// RegisterProtos generates kafka topic and protobuf type mappings from proto.Message and registers them dynamically.
+func (c *Connector) RegisterProtos(protos ...proto.Message) {
+	tt := c.buildTopicTypes(protos...)
+
+	err := c.ProtoRegistryCli.RegisterDynamicTopics(tt, c.MsgType)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to register dynamic topics")
+	}
+}
+
+func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.TopicTypes {
+	tt := make(map[string]proto.Message)
+
+	for _, proto := range protos {
+		tt[c.generateTopicFromProto(proto).Schema()] = proto
+	}
+
+	return tt
 }

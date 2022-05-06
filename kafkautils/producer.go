@@ -241,7 +241,7 @@ func (p *Producer) SendOffsetsToTransaction(position kafka.TopicPartitions, c *C
 // WriteKafkaMessages writes plain kafka messages
 func (p *Producer) WriteKafkaMessages(topic Topic, key []byte, value proto.Message) error {
 	if p.closed {
-		return fmt.Errorf("Cannot write kafka message. Producer is already closed.")
+		return fmt.Errorf("cannot write kafka message. Producer is already closed")
 	}
 
 	pbData, err := proto.Marshal(value)

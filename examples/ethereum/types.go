@@ -1,12 +1,12 @@
 package ethereum
 
 import (
-	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/rs/zerolog/log"
 )
 
-func UnmarshalEthHeader(in *ethtypes.Header) *Block0 {
+func UnmarshalEthHeader(in *types.Header) *Block0 {
 	return &Block0{
 		Ts:         &timestamp.Timestamp{Seconds: int64(in.Time)},
 		Hash:       in.Hash().Bytes(),
@@ -19,7 +19,7 @@ func UnmarshalEthHeader(in *ethtypes.Header) *Block0 {
 }
 
 // go-ethereum Block to nakji struct
-func (b *Block) UnmarshalEthBlock(in *ethtypes.Block) {
+func (b *Block) UnmarshalEthBlock(in *types.Block) {
 	*b = Block{
 		Timestamp:  &timestamp.Timestamp{Seconds: int64(in.Time())},
 		Hash:       in.Hash().Hex(),
@@ -32,7 +32,7 @@ func (b *Block) UnmarshalEthBlock(in *ethtypes.Block) {
 }
 
 // go-ethereum Transaction to nakji struct
-func (tx *Transaction) UnmarshalEthTransaction(in *ethtypes.Transaction) {
+func (tx *Transaction) UnmarshalEthTransaction(in *types.Transaction) {
 	V, R, S := in.RawSignatureValues()
 
 	// handle nil recipients for contract creations
@@ -42,7 +42,7 @@ func (tx *Transaction) UnmarshalEthTransaction(in *ethtypes.Transaction) {
 	}
 
 	// Get Sender (.From()) address
-	from, err := ethtypes.Sender(ethtypes.LatestSignerForChainID(in.ChainId()), in)
+	from, err := types.Sender(types.LatestSignerForChainID(in.ChainId()), in)
 	if err != nil {
 		log.Fatal().Err(err).
 			Interface("tx", in).
@@ -66,4 +66,3 @@ func (tx *Transaction) UnmarshalEthTransaction(in *ethtypes.Transaction) {
 		S: S.Uint64(),
 	}
 }
-
