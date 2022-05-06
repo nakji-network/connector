@@ -1,9 +1,6 @@
 package main
 
 import (
-	"path/filepath"
-	"runtime"
-
 	"github.com/nakji-network/connector"
 	"github.com/nakji-network/connector/examples/compound"
 )
@@ -28,9 +25,7 @@ func main() {
 	}
 	addresses := compound.ConvertRawAddress(rawAddrs...)
 
-	_, filename, _, _ := runtime.Caller(0)
-	path := filepath.Join(filepath.Dir(filename), "../..", "manifest.yaml")
-	c := connector.NewConnector(path)
+	c := connector.NewConnector()
 
 	compoundConnector := compound.Connector{
 		Connector: c,

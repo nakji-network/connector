@@ -35,7 +35,7 @@ type Connector struct {
 }
 
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.
-func NewConnector(path string) *Connector {
+func NewConnector() *Connector {
 	conf := config.GetConfig()
 	conf.SetDefault("kafka.env", "dev")
 	conf.SetDefault("protoregistry.host", "localhost:9191")
@@ -50,7 +50,7 @@ func NewConnector(path string) *Connector {
 	prc := protoregistry.NewClient(conf.GetString("protoregistry.host"))
 
 	c := &Connector{
-		manifest:         LoadManifest(path),
+		manifest:         LoadManifest(),
 		env:              kafkautils.Env(conf.GetString("kafka.env")),
 		MsgType:          kafkautils.Fct,
 		kafkaUrl:         conf.GetString("kafka.url"),
@@ -59,7 +59,10 @@ func NewConnector(path string) *Connector {
 		ProtoRegistryCli: prc,
 	}
 
-	c.Config = conf
+	c.Config = conf.Sub(c.id())
+	if c.Config == nil {
+		c.Config = viper.New()
+	}
 
 	log.Info().
 		Str("id", c.id()).
@@ -138,23 +141,6 @@ func (c *Connector) SubscribeExample() error {
 	}()
 
 	return nil
-}
-
-// MakeQueueTransactionSink creates a channel of kafka Messages. All messages sent to
-// this channel will be wrapped in a transaction and published to the message queue.
-func (c *Connector) MakeQueueTransactionSink() (chan *kafkautils.Message, error) {
-	if !c.producerStarted {
-		err := c.startProducer()
-		if err != nil {
-			return nil, err
-		}
-		c.producerStarted = true
-	}
-
-	sink := make(chan *kafkautils.Message, 10000)
-	go c.Producer.WriteAndCommitSink(sink)
-
-	return sink, nil
 }
 
 // ProduceMessage sends protobuf to message queue with a Topic and Key.
