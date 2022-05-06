@@ -153,12 +153,12 @@ func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message)
 		c.producerStarted = true
 	}
 
-	topic := c.GenerateTopicFromProto(msg)
+	topic := c.generateTopicFromProto(msg)
 	key := kafkautils.NewKey(namespace, subject)
 	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
 }
 
-// ProduceMessage sends protobuf to message queue with a Topic and Key.
+// ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto.Message) error {
 	err := c.ProduceMessage(namespace, subject, msg)
 	if err != nil {
@@ -223,14 +223,35 @@ func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
 	return nil
 }
 
-// GenerateTopicFromProto generates message queue topic names based on the protobuf message.
+// generateTopicFromProto generates message queue topic names based on the protobuf message.
 // Event names should be prefixed with contract_ or category_ when appropriate.
-func (c *Connector) GenerateTopicFromProto(msg proto.Message) kafkautils.Topic {
+func (c *Connector) generateTopicFromProto(msg proto.Message) kafkautils.Topic {
 	return kafkautils.NewTopic(
 		c.env,
 		c.MsgType,
 		c.manifest.Author,
 		c.manifest.Name,
 		c.manifest.Version.Version,
-		msg)
+		msg,
+	)
+}
+
+// RegisterProtos generates kafka topic and protobuf type mappings from proto.Message and registers them dynamically.
+func (c *Connector) RegisterProtos(protos ...proto.Message) {
+	tt := c.buildTopicTypes(protos...)
+
+	err := c.ProtoRegistryCli.RegisterDynamicTopics(tt, c.MsgType)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to register dynamic topics")
+	}
+}
+
+func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.TopicTypes {
+	tt := make(map[string]proto.Message)
+
+	for _, proto := range protos {
+		tt[c.generateTopicFromProto(proto).Schema()] = proto
+	}
+
+	return tt
 }
