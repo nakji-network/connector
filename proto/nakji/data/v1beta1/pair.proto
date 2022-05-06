@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package nakji.data.v1beta1;
+
+option go_package = "github.com/nakji-network/connector/proto/nakji/data/v1beta1;data";
+
+// Represents a pairing of tokens, for example trading markets
+message Pair {
+  bytes id     = 1; // address or other id [index = true, unique = true, unmarshal.encoding = HEX]
+	bytes token0 = 2;	//	byte representation of token address exc. 0x (e.g. \xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2), typically corresponds with nakji.data.Token.id
+	bytes token1 = 3;
+
+	// ideas for additional fields:
+	// string app                      = 4;	//	dApp name that hosts the pair, useful if 1 connector listens to multiple apps (e.g. uniswapv2)
+	// int64 i                         = 5;	//	index of the pair within the dApp, for smart contracts that index pairs (e.g. 185)
+}

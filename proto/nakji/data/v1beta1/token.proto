@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package nakji.data.v1beta1;
+
+option go_package = "github.com/nakji-network/connector/proto/nakji/data/v1beta1;data";
+
+// Represents a token or coin (eg ERC20, SPL)
+message Token {
+  bytes id        = 1; // address or other id [index = true, unique = true, unmarshal.encoding = HEX]
+  uint32 decimals = 2;
+  string name     = 3;
+  string symbol   = 4;
+
+  // ideas for additional fields:
+  // string namespace/network/app
+}
