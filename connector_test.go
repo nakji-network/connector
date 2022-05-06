@@ -4,12 +4,14 @@ import (
 	"testing"
 
 	"github.com/Masterminds/semver"
+	"github.com/nakji-network/connector/kafkautils"
 )
 
 func TestGenerateTopicFromProto(t *testing.T) {
 	v, _ := semver.NewVersion("0.0.0")
 	c := Connector{
-		env: "test",
+		env:     "test",
+		MsgType: kafkautils.Fct,
 		manifest: &manifest{
 			Name:    "ethereum",
 			Author:  "nakji",
