@@ -22,7 +22,7 @@ type ProducerInterface interface {
 	AbortTransaction(context.Context) error
 	EnableTransactions() error
 	WriteAndCommitSink(<-chan *Message)
-	WriteAndCommit(string, []byte, proto.Message) error
+	WriteAndCommit(Topic, []byte, proto.Message) error
 	MakeQueueTransactionSink() chan *Message
 	Close()
 }
@@ -32,8 +32,6 @@ type Producer struct {
 	termChan chan bool
 	doneChan chan bool
 	closed   bool
-
-	transactionsInitialized bool
 }
 
 func MustNewProducer(brokers, transactionalID string) *Producer {

@@ -51,7 +51,7 @@ func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap
 	return &c, nil
 }
 
-// SubscribeProto subscribes to the provided list of topics. This replaces the current subscription.
+// SubscribeTopics subscribes to the provided list of topics. This replaces the current subscription.
 func (c *Consumer) SubscribeTopics(topics []Topic) error {
 	log.Debug().Strs("topics", TopicsStrings(topics)).Msg("kafka subscribe")
 	return c.Consumer.SubscribeTopics(TopicsStrings(topics), nil)
