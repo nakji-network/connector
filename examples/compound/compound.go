@@ -37,10 +37,16 @@ func (c *Connector) Start() {
 	defer close(logs)
 
 	// Initialize CEther ABI for reading logs
-	contractAbi, err := abi.JSON(strings.NewReader(ctoken.CompoundABI))
+	contractAbi1, err := abi.JSON(strings.NewReader(ctoken.CompoundABI))
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to read CEther abi")
 	}
+	contractAbi2, err := abi.JSON(strings.NewReader(ctoken.CtokenMetaData.ABI))
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to read CEther abi")
+	}
+
+	contractAbis := []abi.ABI{contractAbi1, contractAbi2}
 
 	// Register topic and protobuf type mappings
 	protos := []proto.Message{
@@ -75,7 +81,7 @@ func (c *Connector) Start() {
 		case err = <-sub.Err():
 			log.Fatal().Err(err)
 		case evLog := <-logs:
-			msg, err := c.ProcessLogEvent(contractAbi, evLog)
+			msg, err := c.ProcessLogEvent(contractAbis, evLog)
 			if err != nil {
 				log.Error().Err(err).Msg("failed to process log event")
 				continue
@@ -132,18 +138,26 @@ func (c *Connector) CEtherLogsListener(client *ethclient.Client, logs chan types
 	return sub
 }
 
-func (c *Connector) ProcessLogEvent(contractAbi abi.ABI, evLog types.Log) (proto.Message, error) {
+func (c *Connector) ProcessLogEvent(contractAbis []abi.ABI, evLog types.Log) (proto.Message, error) {
 	// TODO: Add timestamp from block since logs don't include timestamp
-	ev, err := contractAbi.EventByID(evLog.Topics[0])
-	if err != nil {
-		log.Warn().Err(err).Msg("EventByID error, skipping")
-		return nil, err
+	var ev *abi.Event
+	var err error
+	var idx int
+
+	for i, cAbi := range contractAbis {
+		ev, err = cAbi.EventByID(evLog.Topics[0])
+		if err == nil {
+			idx = i
+			break
+		}
 	}
 
 	if ev == nil {
 		log.Warn().Msg("ignore if event id isn't defined in a partial ABI")
 		return nil, err
 	}
+
+	contractAbi := contractAbis[idx]
 
 	var msg proto.Message
 
