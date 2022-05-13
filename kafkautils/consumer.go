@@ -9,7 +9,7 @@ import (
 
 type Consumer struct {
 	*kafka.Consumer
-	Messages <-chan Message
+	messages <-chan Message
 }
 
 // NewConsumer prepares a message queue consumer. Subscribe to proto messages on .Messages chan
@@ -46,9 +46,14 @@ func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap
 	}
 
 	c := Consumer{Consumer: cons}
-	c.Messages = c.kafkaEventToProtoPipe(c.Events())
+	c.messages = c.kafkaEventToProtoPipe(c.Events())
 
 	return &c, nil
+}
+
+//	Messages returns receiver channel for Kafka messages.
+func (c *Consumer) Messages() <-chan Message {
+	return c.messages
 }
 
 // SubscribeTopics subscribes to the provided list of topics. This replaces the current subscription.

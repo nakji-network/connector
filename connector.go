@@ -113,7 +113,7 @@ func (c *Connector) Subscribe(topics []kafkautils.Topic, overrideOpts ...kafka.C
 		return nil, err
 	}
 
-	return c.Consumer.Messages, nil
+	return c.Consumer.Messages(), nil
 }
 
 func (c *Connector) SubscribeExample() error {

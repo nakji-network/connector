@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate mockgen --build_flags='-tags dynamic' -destination=mocks/mock_producer.go -package=mocks . ProducerInterface
+//go:generate mockgen -destination=mocks/mock_producer.go -package=mocks . ProducerInterface
 type ProducerInterface interface {
 	InitTransactions(context.Context) error
 	BeginTransaction() error
@@ -187,9 +187,8 @@ func (p *Producer) Close() {
 	// Exit application with an error (1) if there was a fatal error.
 	if fatalErr != nil {
 		os.Exit(1)
-	} else {
-		os.Exit(0)
 	}
+	os.Exit(0)
 }
 
 // https://github.com/confluentinc/confluent-kafka-go/blob/24f06a50dd915cc346c8a36e5a7f7306f4339cfe/examples/transactions_example/txnhelpers.go
