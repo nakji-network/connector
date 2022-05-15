@@ -235,7 +235,8 @@ func (p *Producer) SendOffsetsToTransaction(position kafka.TopicPartitions, c *C
 	}
 }
 
-// WriteKafkaMessages writes plain kafka messages
+// WriteKafkaMessages writes plain kafka messages. `key` should be nil unless message ordering is required.
+// Use WriteAndCommit unless you want to bulk write many messages before committing.
 func (p *Producer) WriteKafkaMessages(topic Topic, key []byte, value proto.Message) error {
 	if p.closed {
 		return fmt.Errorf("cannot write kafka message. Producer is already closed")
@@ -282,17 +283,18 @@ func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message) 
 	return nil
 }
 
+// WriteAndCommitSink is the same as WriteAndCommit using a channel as input
 func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 	for msg := range in {
 		err := p.WriteAndCommit(
 			msg.Topic,
-			msg.Key.Bytes(),
+			msg.Key,
 			msg.ProtoMsg,
 		)
 		if err != nil {
 			log.Error().Err(err).
 				Str("topic", msg.Topic.String()).
-				Str("key", msg.Key.String()).
+				Str("key", string(msg.Key)).
 				Interface("protoMsg", msg.ProtoMsg).
 				Msg("Write to kafka error")
 		}

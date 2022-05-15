@@ -133,7 +133,7 @@ func (c *Connector) SubscribeExample() error {
 	go func() {
 		for msg := range sub {
 			// do something with the msg
-			kafkautils.DebugPrint(msg.Topic, msg.Key, msg.ProtoMsg)
+			log.Debug().Interface("message", msg).Msg("new message received")
 
 			// Commit to kafka to acknowledge receipt. Unnecessary if  `auto.offset.reset = latest` because you will want latest messages instead of from last commit.
 			c.CommitMessage(msg.Message)
@@ -143,24 +143,21 @@ func (c *Connector) SubscribeExample() error {
 	return nil
 }
 
-// ProduceMessage sends protobuf to message queue with a Topic and Key.
-func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message) error {
+// ProduceMessage sends protobuf to message queue. `key` should only be non-nil if message ordering is required
+func (c *Connector) ProduceMessage(key []byte, msg proto.Message) error {
 	if !c.producerStarted {
-		err := c.startProducer()
-		if err != nil {
-			return err
+		if err := c.startProducer(); err != nil {
 		}
 		c.producerStarted = true
 	}
 
 	topic := c.generateTopicFromProto(msg)
-	key := kafkautils.NewKey(namespace, subject)
-	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
+	return c.WriteKafkaMessages(topic, key, msg)
 }
 
 // ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
-func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto.Message) error {
-	err := c.ProduceMessage(namespace, subject, msg)
+func (c *Connector) ProduceAndCommitMessage(key []byte, msg proto.Message) error {
+	err := c.ProduceMessage(key, msg)
 	if err != nil {
 		return err
 	}

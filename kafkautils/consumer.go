@@ -77,12 +77,6 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 			case *kafka.Message:
 				//log.Debug().Str("topicPartition", e.TopicPartition.String()).Str("val", string(e.Value)).Msg("kafka received message")
 
-				k, err := ParseKey(e.Key)
-				if err != nil {
-					log.Error().Err(err).Msg("")
-					continue
-				}
-
 				t, err := ParseTopic(*e.TopicPartition.Topic)
 				if err != nil {
 					log.Error().Err(err).Str("topic", *e.TopicPartition.Topic).Msg("Unable to parse topic")
@@ -97,7 +91,6 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 				out <- Message{
 					Message:  e,
 					Topic:    t,
-					Key:      k,
 					ProtoMsg: protoMsg,
 				}
 

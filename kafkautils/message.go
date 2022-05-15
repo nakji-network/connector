@@ -10,7 +10,6 @@ import (
 type Message struct {
 	*kafka.Message
 	Topic    Topic
-	Key      Key
 	ProtoMsg proto.Message
 }
 
