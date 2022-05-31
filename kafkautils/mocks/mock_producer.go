@@ -118,20 +118,6 @@ func (mr *MockProducerInterfaceMockRecorder) InitTransactions(arg0 interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InitTransactions", reflect.TypeOf((*MockProducerInterface)(nil).InitTransactions), arg0)
 }
 
-// MakeQueueTransactionSink mocks base method.
-func (m *MockProducerInterface) MakeQueueTransactionSink() chan *kafkautils.Message {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MakeQueueTransactionSink")
-	ret0, _ := ret[0].(chan *kafkautils.Message)
-	return ret0
-}
-
-// MakeQueueTransactionSink indicates an expected call of MakeQueueTransactionSink.
-func (mr *MockProducerInterfaceMockRecorder) MakeQueueTransactionSink() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MakeQueueTransactionSink", reflect.TypeOf((*MockProducerInterface)(nil).MakeQueueTransactionSink))
-}
-
 // WriteAndCommit mocks base method.
 func (m *MockProducerInterface) WriteAndCommit(arg0 kafkautils.Topic, arg1 []byte, arg2 protoreflect.ProtoMessage) error {
 	m.ctrl.T.Helper()

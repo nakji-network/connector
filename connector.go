@@ -27,7 +27,7 @@ type Connector struct {
 	kafkaUrl        string
 	producerStarted bool
 	consumerStarted bool
-	*kafkautils.Producer
+	kafkautils.ProducerInterface
 	*kafkautils.Consumer
 
 	ChainClients     *chain.Clients
@@ -165,17 +165,17 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto
 		return err
 	}
 
-	err = c.Producer.CommitTransaction(nil)
+	err = c.ProducerInterface.CommitTransaction(nil)
 	if err != nil {
 		log.Error().Err(err).Msg("Processor: Failed to commit transaction")
 
-		err = c.Producer.AbortTransaction(nil)
+		err = c.ProducerInterface.AbortTransaction(nil)
 		if err != nil {
 			log.Fatal().Err(err).Msg("")
 		}
 	}
 	// Start a new transaction
-	err = c.Producer.BeginTransaction()
+	err = c.ProducerInterface.BeginTransaction()
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
@@ -191,12 +191,12 @@ func (c *Connector) startProducer() error {
 		Msg("Initializing kafka producer")
 
 	var err error
-	c.Producer, err = kafkautils.NewProducer(c.kafkaUrl, txID)
+	c.ProducerInterface, err = kafkautils.NewProducer(c.kafkaUrl, txID)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create new kafka producer")
 		return err
 	}
-	err = c.Producer.EnableTransactions()
+	err = c.ProducerInterface.EnableTransactions()
 	if err != nil {
 		return err
 	}
