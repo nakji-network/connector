@@ -2,8 +2,14 @@ package chain
 
 import (
 	"context"
+	"fmt"
+	"math/big"
 	"strings"
 
+	"github.com/nakji-network/connector/common"
+
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/rs/zerolog/log"
 )
@@ -35,4 +41,104 @@ func (c Clients) Ethereum(ctx context.Context, chainOverride ...string) *ethclie
 		log.Fatal().Err(err).Msg("RPC connection error")
 	}
 	return client
+}
+
+// Subscribe pairs in address chunks. Default chunksize = 7350 for quiknode.
+func ChunkedSubscribeFilterLogs(ctx context.Context, client *ethclient.Client, filterQuery ethereum.FilterQuery, ch chan<- types.Log, chunksize int) (<-chan error, error) {
+	// Split filterlog subscriptions into 7350 contracts due to json-rpc limitation (undocumented)
+	if chunksize == 0 {
+		chunksize = 7350
+	}
+
+	queries := []ethereum.FilterQuery{}
+
+	for i := 0; i < len(filterQuery.Addresses); i += chunksize {
+		chunkQuery := filterQuery
+		upperBound := i + chunksize
+		if upperBound > len(filterQuery.Addresses) {
+			upperBound = len(filterQuery.Addresses)
+		}
+		chunkQuery.Addresses = filterQuery.Addresses[i:upperBound]
+		queries = append(queries, chunkQuery)
+	}
+
+	errcs := make([]<-chan error, len(queries))
+	for i, query := range queries {
+		sub, err := client.SubscribeFilterLogs(ctx, query, ch)
+		if err != nil {
+			return nil, err
+		}
+		errcs[i] = sub.Err()
+		log.Info().
+			Int("addresses", len(query.Addresses)).
+			Int("totalAddresses", len(filterQuery.Addresses)).
+			Msg("Listening to logs")
+	}
+
+	return common.MergeErrChans(errcs...), nil
+}
+
+//	ChunkedFilterLogs queries the blockchain for past events in batches.
+//	It slices addresses and total number of blocks with pre-defined batch size.
+//	The results are later fed into a log chan that was provided by the caller.
+//	Any occcuring error is also fed into an error chan that was provided by the caller.
+func ChunkedFilterLogs(ctx context.Context, client *ethclient.Client, q ethereum.FilterQuery, latestBlockNumber int64, backFillNumBlocks int64, logch chan<- types.Log, errch chan<- error) {
+
+	const (
+		addressChunkSize       = 7350
+		blockChunkSize   int64 = 50
+	)
+
+	startBlockNumber := latestBlockNumber - backFillNumBlocks
+
+	toBlock := latestBlockNumber - 1
+	fromBlock := toBlock - backFillNumBlocks
+	if backFillNumBlocks > blockChunkSize {
+		fromBlock = toBlock - blockChunkSize
+	}
+
+	// Address chunks move forward; block chunks move backwards to get latest blocks first.
+	go func() {
+		for toBlock > fromBlock {
+			log.Info().Str("from", fmt.Sprint(fromBlock)).Str("to", fmt.Sprint(toBlock)).Msg("Retrieving historical events")
+
+			startIndex := 0
+			endIndex := startIndex + len(q.Addresses)
+			if addressChunkSize < len(q.Addresses) {
+				endIndex = startIndex + addressChunkSize
+			}
+
+			for startIndex < len(q.Addresses) {
+				query := ethereum.FilterQuery{
+					FromBlock: big.NewInt(fromBlock),
+					ToBlock:   big.NewInt(toBlock),
+					Addresses: q.Addresses[startIndex:endIndex],
+				}
+
+				logs, err := client.FilterLogs(ctx, query)
+				if err != nil {
+					errch <- err
+				}
+
+				for _, l := range logs {
+					if l.Removed {
+						continue
+					}
+					logch <- l
+				}
+
+				startIndex = endIndex
+				endIndex += addressChunkSize
+				if endIndex > len(q.Addresses) {
+					endIndex = len(q.Addresses)
+				}
+			}
+
+			toBlock = fromBlock - 1
+			fromBlock = fromBlock - blockChunkSize
+			if fromBlock < startBlockNumber {
+				fromBlock = startBlockNumber
+			}
+		}
+	}()
 }
