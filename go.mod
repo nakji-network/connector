@@ -9,6 +9,7 @@ require (
 	github.com/ethereum/go-ethereum v1.10.15
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
+	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d
 	github.com/heptiolabs/healthcheck v0.0.0-20211123025425-613501dd5deb
 	github.com/joonix/log v0.0.0-20200409080653-9c1d2ceb5f1d
 	github.com/prometheus/client_golang v1.11.0
