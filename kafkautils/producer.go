@@ -34,6 +34,22 @@ type Producer struct {
 	closed   bool
 }
 
+//	Producer config flags and their default values can be found here
+//	https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
+const (
+	//	the producer will wait for up to the given delay to allow other records to be sent so that the sends can be batched together
+	KafkaProducerLingerMS = 1000
+
+	// the maximum amount of time the client will wait for the response of a request
+	KafkaProducerRequestTimeoutMS = 60000
+
+	// (10mins) default 60000 (1min) https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
+	KafkaProducerTransactionTimeoutMS = 5000
+
+	//default 1000 https://docs.confluent.io/2.0.0/clients/librdkafka/CONFIGURATION_8md.html
+	KafkaProducerQueueBufferingMaxMS = 2000
+)
+
 func MustNewProducer(brokers, transactionalID string) *Producer {
 	p, err := NewProducer(brokers, transactionalID)
 	if err != nil {
@@ -47,9 +63,11 @@ func NewProducer(brokers, transactionalID string) (*Producer, error) {
 	producer, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers": brokers,
 		//"enable.idempotence":     true,
+		"linger.ms":              KafkaProducerLingerMS,
+		"request.timeout.ms":     KafkaProducerRequestTimeoutMS,
 		"transactional.id":       transactionalID,
-		"transaction.timeout.ms": 600000, // (10mins) default 60000 (1min) https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
-		"queue.buffering.max.ms": 2000,   //default 1000 https://docs.confluent.io/2.0.0/clients/librdkafka/CONFIGURATION_8md.html
+		"transaction.timeout.ms": KafkaProducerTransactionTimeoutMS,
+		"queue.buffering.max.ms": KafkaProducerQueueBufferingMaxMS,
 		"compression.codec":      "snappy",
 	})
 	if err != nil {
@@ -266,15 +284,24 @@ func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message) 
 		return err
 	}
 
+retry:
 	err = p.CommitTransaction(nil)
 	if err != nil {
 		log.Error().Err(err).Msg("Processor: Failed to commit transaction")
 
-		err = p.AbortTransaction(nil)
-		if err != nil {
-			log.Fatal().Err(err).Msg("")
+		if err.(kafka.Error).IsRetriable() {
+			time.Sleep(time.Second * 5)
+			goto retry
+		} else if err.(kafka.Error).TxnRequiresAbort() {
+			err = p.AbortTransaction(nil)
+			if err != nil {
+				log.Fatal().Err(err).Msg("failed to abort kafka transaction")
+			}
+		} else {
+			log.Fatal().Err(err).Msg("failed to commit kafka transaction")
 		}
 	}
+
 	// Start a new transaction
 	err = p.BeginTransaction()
 	if err != nil {
