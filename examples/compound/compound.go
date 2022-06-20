@@ -6,22 +6,23 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/nakji-network/connector"
+	"github.com/nakji-network/connector/common"
+	"github.com/nakji-network/connector/examples/compound/ctoken"
+
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
+	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-
-	"github.com/nakji-network/connector"
-	"github.com/nakji-network/connector/examples/compound/ctoken"
 )
 
 type Connector struct {
 	*connector.Connector
-	ContractAddresses []common.Address
+	ContractAddresses []ethcommon.Address
 	Chain             string // chain override, since ChainClients.Ethereum supports overriding with any evm chain
 }
 
@@ -164,7 +165,7 @@ func (c *Connector) ProcessLogEvent(contractAbis []abi.ABI, evLog types.Log) (pr
 	switch ev.Name {
 	case "Mint":
 		event := new(ctoken.CompoundMint)
-		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
+		if err := common.UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack Mint event error")
 			return nil, err
 		}
@@ -179,7 +180,7 @@ func (c *Connector) ProcessLogEvent(contractAbis []abi.ABI, evLog types.Log) (pr
 		}
 	case "Redeem":
 		event := new(ctoken.CompoundRedeem)
-		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
+		if err := common.UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack Redeem event error")
 			return nil, err
 		}
@@ -194,7 +195,7 @@ func (c *Connector) ProcessLogEvent(contractAbis []abi.ABI, evLog types.Log) (pr
 		}
 	case "Borrow":
 		event := new(ctoken.CompoundBorrow)
-		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
+		if err := common.UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack Borrow event error")
 			return nil, err
 		}
@@ -210,7 +211,7 @@ func (c *Connector) ProcessLogEvent(contractAbis []abi.ABI, evLog types.Log) (pr
 		}
 	case "RepayBorrow":
 		event := new(ctoken.CompoundRepayBorrow)
-		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
+		if err := common.UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack RepayBorrow event error")
 			return nil, err
 		}
@@ -227,7 +228,7 @@ func (c *Connector) ProcessLogEvent(contractAbis []abi.ABI, evLog types.Log) (pr
 		}
 	case "LiquidateBorrow":
 		event := new(ctoken.CompoundLiquidateBorrow)
-		if err := UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
+		if err := common.UnpackLog(contractAbi, event, ev.Name, evLog); err != nil {
 			log.Error().Err(err).Msg("Unpack LiquidateBorrow event error")
 			return nil, err
 		}
@@ -247,28 +248,12 @@ func (c *Connector) ProcessLogEvent(contractAbis []abi.ABI, evLog types.Log) (pr
 	return msg, nil
 }
 
-func ConvertRawAddress(rawAddresses ...string) []common.Address {
-	var addresses []common.Address
+func ConvertRawAddress(rawAddresses ...string) []ethcommon.Address {
+	var addresses []ethcommon.Address
 
 	for _, addr := range rawAddresses {
-		addresses = append(addresses, common.HexToAddress(addr))
+		addresses = append(addresses, ethcommon.HexToAddress(addr))
 	}
 
 	return addresses
-}
-
-// UnpackLog is copied from https://github.com/ethereum/go-ethereum/blob/c2d2f4ed8f232bb11663a1b01a2e578aa22f24bd/accounts/abi/bind/base.go#L350
-func UnpackLog(contractAbi abi.ABI, out interface{}, event string, log types.Log) error {
-	if len(log.Data) > 0 {
-		if err := contractAbi.UnpackIntoInterface(out, event, log.Data); err != nil {
-			return err
-		}
-	}
-	var indexed abi.Arguments
-	for _, arg := range contractAbi.Events[event].Inputs {
-		if arg.Indexed {
-			indexed = append(indexed, arg)
-		}
-	}
-	return abi.ParseTopics(out, indexed, log.Topics[1:])
 }
