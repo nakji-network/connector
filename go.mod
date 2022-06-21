@@ -41,7 +41,7 @@ require (
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.1 // indirect
 	github.com/gagliardetto/binary v0.6.1 // indirect
-	github.com/gagliardetto/solana-go v1.4.0 // indirect
+	github.com/gagliardetto/solana-go v1.1.0 // indirect
 	github.com/gagliardetto/treeout v0.1.4 // indirect
 	github.com/go-ole/go-ole v1.2.1 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
