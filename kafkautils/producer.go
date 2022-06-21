@@ -23,6 +23,7 @@ type ProducerInterface interface {
 	EnableTransactions() error
 	WriteAndCommitSink(<-chan *Message)
 	WriteAndCommit(Topic, []byte, proto.Message) error
+	MakeQueueTransactionSink() chan *Message
 	Close()
 }
 
@@ -297,4 +298,17 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 				Msg("Write to kafka error")
 		}
 	}
+}
+
+// MakeQueueTransactionSink creates a channel that receives Kafka Messages. All messages within the channel are then automatically
+// published to the specific topic in the `*kafkautils.Message`.
+func (p *Producer) MakeQueueTransactionSink() chan *Message {
+	sink := make(chan *Message, 10000)
+	err := p.EnableTransactions()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Transaction was not enabled")
+	}
+	go p.WriteAndCommitSink(sink)
+
+	return sink
 }
