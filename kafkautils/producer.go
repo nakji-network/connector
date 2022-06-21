@@ -48,8 +48,8 @@ func NewProducer(brokers, transactionalID string) (*Producer, error) {
 		"bootstrap.servers": brokers,
 		//"enable.idempotence":     true,
 		"transactional.id":       transactionalID,
-		"transaction.timeout.ms": 5000,
-		"queue.buffering.max.ms": 2000, //default 1000 https://docs.confluent.io/2.0.0/clients/librdkafka/CONFIGURATION_8md.html
+		"transaction.timeout.ms": 600000, // (10mins) default 60000 (1min) https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
+		"queue.buffering.max.ms": 2000,   //default 1000 https://docs.confluent.io/2.0.0/clients/librdkafka/CONFIGURATION_8md.html
 		"compression.codec":      "snappy",
 	})
 	if err != nil {
