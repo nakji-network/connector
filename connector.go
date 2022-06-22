@@ -22,11 +22,9 @@ type Connector struct {
 	Config   *viper.Viper
 	Health   healthcheck.Handler
 
-	env             kafkautils.Env
-	MsgType         kafkautils.MsgType
-	kafkaUrl        string
-	producerStarted bool
-	consumerStarted bool
+	env      kafkautils.Env
+	MsgType  kafkautils.MsgType
+	kafkaUrl string
 	kafkautils.ProducerInterface
 	*kafkautils.Consumer
 
@@ -34,8 +32,32 @@ type Connector struct {
 	ProtoRegistryCli *protoregistry.Client
 }
 
-// NewConnector returns a base connector implementation that other connectors can embed to add on to.
-func NewConnector() *Connector {
+func NewProducerConnector() (*Connector, error) {
+	c := newConnector()
+	err := c.startProducer()
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// NewConsumerConnector creates a message queue consumer.
+// Common overrideOpts are
+//		kafka.ConfigMap{
+//			"auto.offset.reset": "latest",
+//		}
+// for sink connectors to ignore all existing messages in the queue.
+func NewConsumerConnector(overrideOpts ...kafka.ConfigMap) (*Connector, error) {
+	c := newConnector()
+	err := c.startConsumer(overrideOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// newConnector returns a base connector implementation that other connectors can embed to add on to.
+func newConnector() *Connector {
 	conf := config.GetConfig()
 	conf.SetDefault("kafka.env", "dev")
 	conf.SetDefault("protoregistry.host", "localhost:9191")
@@ -83,13 +105,7 @@ func (c *Connector) id() string {
 	return fmt.Sprintf("%s-%s-%s-%s", c.manifest.Author, c.manifest.Name, c.manifest.Version, c.env)
 }
 
-// Subscribe creates a message queue consumer and subscribes to a list of topics.
-// Common overrideOpts are
-//		kafka.ConfigMap{
-//			"auto.offset.reset": "latest",
-//		}
-// for sink connectors to ignore all existing messages in the queue.
-
+// Subscribe subscribes to a list of topics.
 // To read:
 // 	sub, err := connector.Subscribe(...)
 // 	for msg := range sub {
@@ -99,15 +115,7 @@ func (c *Connector) id() string {
 // 		// commit to kafka to acknowledge receipt
 // 		consumer.CommitMessage(msg.Message)
 // 	}
-func (c *Connector) Subscribe(topics []kafkautils.Topic, overrideOpts ...kafka.ConfigMap) (<-chan kafkautils.Message, error) {
-	if !c.consumerStarted {
-		err := c.startConsumer(overrideOpts...)
-		if err != nil {
-			return nil, err
-		}
-		c.consumerStarted = true
-	}
-
+func (c *Connector) Subscribe(topics []kafkautils.Topic) (<-chan kafkautils.Message, error) {
 	if err := c.SubscribeTopics(topics); err != nil {
 		log.Error().Err(err).Msg("kafka subscribe proto error")
 		return nil, err
@@ -145,14 +153,6 @@ func (c *Connector) SubscribeExample() error {
 
 // ProduceMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message) error {
-	if !c.producerStarted {
-		err := c.startProducer()
-		if err != nil {
-			return err
-		}
-		c.producerStarted = true
-	}
-
 	topic := c.generateTopicFromProto(msg)
 	key := kafkautils.NewKey(namespace, subject)
 	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
@@ -160,7 +160,13 @@ func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message)
 
 // ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto.Message) error {
-	err := c.ProduceMessage(namespace, subject, msg)
+	// Start a new transaction
+	err := c.ProducerInterface.BeginTransaction()
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
+	err = c.ProduceMessage(namespace, subject, msg)
 	if err != nil {
 		return err
 	}
@@ -174,11 +180,7 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto
 			log.Fatal().Err(err).Msg("")
 		}
 	}
-	// Start a new transaction
-	err = c.ProducerInterface.BeginTransaction()
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
+
 	return nil
 }
 

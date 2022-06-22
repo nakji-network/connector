@@ -44,7 +44,7 @@ const (
 	KafkaProducerRequestTimeoutMS = 60000
 
 	// (10mins) default 60000 (1min) https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
-	KafkaProducerTransactionTimeoutMS = 5000
+	KafkaProducerTransactionTimeoutMS = 600000
 
 	//default 1000 https://docs.confluent.io/2.0.0/clients/librdkafka/CONFIGURATION_8md.html
 	KafkaProducerQueueBufferingMaxMS = 2000
@@ -165,11 +165,6 @@ func (p *Producer) EnableTransactions() error {
 		return err
 	}
 
-	err = p.BeginTransaction()
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -279,7 +274,13 @@ func (p *Producer) WriteKafkaMessages(topic Topic, key []byte, value proto.Messa
 
 // WriteAndCommit writes for transactional producers, committing transaction after each write
 func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message) error {
-	err := p.WriteKafkaMessages(topic, key, value)
+	// Start a new transaction
+	err := p.BeginTransaction()
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
+	err = p.WriteKafkaMessages(topic, key, value)
 	if err != nil {
 		return err
 	}
@@ -302,11 +303,6 @@ retry:
 		}
 	}
 
-	// Start a new transaction
-	err = p.BeginTransaction()
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
 	return nil
 }
 
