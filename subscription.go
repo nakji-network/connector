@@ -44,18 +44,22 @@ type Subscription struct {
 	isHeaderRequired  bool
 	latestBlockNumber *big.Int
 	logs              chan types.Log
-	name              string
-	numBlocks         uint64
+
+	//	Blockchain network to connect to
+	network string
+
+	//	Number of blocks from latest block number to retrieve historical events
+	numBlocks uint64
 }
 
 const allowedBlocksBehind uint64 = 60
 
 //	NewSubscription	connects to given endpoints and subscribes to blockchain.
-func NewSubscription(ctx context.Context, connector *Connector, name string, addresses []common.Address, fromBlock uint64, numBlocks uint64) (*Subscription, error) {
+func NewSubscription(ctx context.Context, connector *Connector, network string, addresses []common.Address, fromBlock uint64, numBlocks uint64) (*Subscription, error) {
 	s := Subscription{
 		addresses:        addresses,
 		done:             make(chan bool, 1),
-		client:           connector.ChainClients.Ethereum(ctx),
+		client:           connector.ChainClients.Ethereum(ctx, network),
 		connector:        connector,
 		context:          ctx,
 		errchan:          make(chan error, 1),
@@ -64,7 +68,7 @@ func NewSubscription(ctx context.Context, connector *Connector, name string, add
 		interrupt:        make(chan os.Signal, 1),
 		isHeaderRequired: false,
 		logs:             make(chan types.Log),
-		name:             name,
+		network:          network,
 		numBlocks:        numBlocks,
 	}
 
@@ -97,7 +101,7 @@ func (s *Subscription) Resubscribe() {
 
 //	Unsubscribe closes subscriptions and open channels.
 func (s *Subscription) Unsubscribe() {
-	log.Info().Str("network", s.name).Msg("shutting down subscription")
+	log.Info().Str("network", s.network).Msg("shutting down subscription")
 	s.done <- true
 	close(s.headers)
 	close(s.logs)
@@ -141,8 +145,7 @@ func (s *Subscription) getBlockTimeFromChain(blockHash common.Hash) (uint64, err
 		return val.(uint64), nil
 	}
 
-	client := s.connector.ChainClients.Ethereum(s.context)
-	header, err := client.HeaderByHash(s.context, blockHash)
+	header, err := s.client.HeaderByHash(s.context, blockHash)
 	if err != nil {
 		if header != nil {
 			log.Error().Err(err).Uint64("block", header.Number.Uint64()).Msg("failed to retrieve header")
@@ -185,7 +188,7 @@ func (s *Subscription) subscribeHeaders() {
 			if diff > 0 && diff > allowedBlocksBehind {
 				s.subscribeHeaders()
 			} else if blockNumber > s.latestBlockNumber.Uint64() {
-				log.Debug().Str("block", header.Number.String()).Str("network", s.name).Uint64("ts", header.Time).Msg("header received")
+				log.Debug().Str("block", header.Number.String()).Str("network", s.network).Uint64("ts", header.Time).Msg("header received")
 				s.latestBlockNumber = header.Number
 			}
 
@@ -230,12 +233,12 @@ func (s *Subscription) subscribeLogs() {
 		case vLog := <-logch:
 			_, err := s.GetBlockTime(vLog)
 			for err != nil {
-				log.Debug().Uint64("block", vLog.BlockNumber).Str("network", s.name).Msg("waiting for block timestamp")
+				log.Debug().Uint64("block", vLog.BlockNumber).Str("network", s.network).Msg("waiting for block timestamp")
 				time.Sleep(tWait)
 				tWait *= 2
 				_, err = s.GetBlockTime(vLog)
 				if tWait > tMax {
-					log.Warn().Uint64("block", vLog.BlockNumber).Str("network", s.name).Msg("block timestamp not available")
+					log.Warn().Uint64("block", vLog.BlockNumber).Str("network", s.network).Msg("block timestamp not available")
 					break
 				}
 			}
