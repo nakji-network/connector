@@ -95,6 +95,7 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 
 //	Resubscribe subscribes to header and event logs.
 func (s *Subscription) Resubscribe() {
+	log.Info().Str("network", s.network).Msg("subscribing..")
 	go s.subscribeHeaders()
 	go s.subscribeLogs()
 }
@@ -168,8 +169,12 @@ func (s *Subscription) subscribeHeaders() {
 	for {
 		select {
 		case err := <-hs.Err():
-			s.errchan <- err
-			return
+			if isRetryable(err) {
+				s.Resubscribe()
+			} else {
+				s.errchan <- err
+				return
+			}
 
 		case header := <-headers:
 
@@ -223,7 +228,7 @@ func (s *Subscription) subscribeLogs() {
 			return
 
 		case err = <-subErrChan:
-			if isTimeout(err) {
+			if isRetryable(err) {
 				s.Resubscribe()
 			} else {
 				s.errchan <- err
@@ -276,7 +281,7 @@ func (s *Subscription) backfill() bool {
 	return true
 }
 
-func isTimeout(err error) bool {
+func isRetryable(err error) bool {
 	// error 1: Message timed out
 	// error 2: Connection reset by peer
 	// error 3: websocket: close 1006 (abnormal closure)
