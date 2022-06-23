@@ -38,16 +38,16 @@ type Producer struct {
 //	https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
 const (
 	//	the producer will wait for up to the given delay to allow other records to be sent so that the sends can be batched together
-	KafkaProducerLingerMS = 1000
+	KafkaProducerLingerMS = 1_000
 
 	// the maximum amount of time the client will wait for the response of a request
-	KafkaProducerRequestTimeoutMS = 60000
+	KafkaProducerRequestTimeoutMS = 60_000
 
-	// (10mins) default 60000 (1min) https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
-	KafkaProducerTransactionTimeoutMS = 5000
+	// (5mins) default 60000 (1min) https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
+	KafkaProducerTransactionTimeoutMS = 300_000
 
 	//default 1000 https://docs.confluent.io/2.0.0/clients/librdkafka/CONFIGURATION_8md.html
-	KafkaProducerQueueBufferingMaxMS = 2000
+	KafkaProducerQueueBufferingMaxMS = 2_000
 )
 
 func MustNewProducer(brokers, transactionalID string) *Producer {
