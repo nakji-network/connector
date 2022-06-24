@@ -1,7 +1,9 @@
 package connector
 
 import (
+	"crypto/rand"
 	"fmt"
+	"math/big"
 	"net/http"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
@@ -18,18 +20,19 @@ import (
 )
 
 type Connector struct {
-	manifest *manifest
-	Config   *viper.Viper
-	Health   healthcheck.Handler
+	kafkautils.ProducerInterface
+	*kafkautils.Consumer
+
+	Config           *viper.Viper
+	ChainClients     *chain.Clients
+	Health           healthcheck.Handler
+	ProtoRegistryCli *protoregistry.Client
 
 	env      kafkautils.Env
 	MsgType  kafkautils.MsgType
 	kafkaUrl string
-	kafkautils.ProducerInterface
-	*kafkautils.Consumer
-
-	ChainClients     *chain.Clients
-	ProtoRegistryCli *protoregistry.Client
+	manifest *manifest
+	name     string
 }
 
 func NewProducerConnector() (*Connector, error) {
@@ -81,28 +84,29 @@ func newConnector() *Connector {
 		ProtoRegistryCli: prc,
 	}
 
-	c.Config = conf.Sub(c.id())
+	n, e := rand.Int(rand.Reader, big.NewInt(1000))
+	if e != nil {
+		log.Fatal().Err(err).Msg("failed to create random number")
+	}
+
+	c.name = fmt.Sprintf("%s-%s-%s-%s-%d", c.manifest.Author, c.manifest.Name, c.manifest.Version, c.env, n)
+
+	c.Config = conf.Sub(c.name)
 	if c.Config == nil {
 		c.Config = viper.New()
 	}
 
 	log.Info().
-		Str("id", c.id()).
+		Str("id", c.name).
 		Msg("Starting connector")
 
 	// For Liveness and Readiness Probe checks
 	go http.ListenAndServe("0.0.0.0:8080", c.Health)
 	log.Info().Str("addr", "0.0.0.0:8080").Msg("healthcheck listening on /live and /ready")
 
-	monitor.StartMonitor(c.id())
+	monitor.StartMonitor(c.name)
 
 	return c
-}
-
-// id() returns a unique id for this connector based on the manifest.
-// TODO: need to change id if the connector is used multiple times with different arguments
-func (c *Connector) id() string {
-	return fmt.Sprintf("%s-%s-%s-%s", c.manifest.Author, c.manifest.Name, c.manifest.Version, c.env)
 }
 
 // Subscribe subscribes to a list of topics.
@@ -186,14 +190,13 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto
 
 // startProducer() creates a new kafka producer with transactions enabled.
 func (c *Connector) startProducer() error {
-	txID := c.id()
 
 	log.Info().
-		Str("transactionID", txID).
+		Str("transactionID", c.name).
 		Msg("Initializing kafka producer")
 
 	var err error
-	c.ProducerInterface, err = kafkautils.NewProducer(c.kafkaUrl, txID)
+	c.ProducerInterface, err = kafkautils.NewProducer(c.kafkaUrl, c.name)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create new kafka producer")
 		return err
@@ -208,15 +211,13 @@ func (c *Connector) startProducer() error {
 
 // startConsumer() creates a new kafka consumer and subscribes to a list of topics
 func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
-	groupID := c.id()
-
 	log.Info().
-		Str("groupID", groupID).
+		Str("groupID", c.name).
 		Msg("Initializing kafka consumer")
 
 	// set auto.offset.reset for all topics because we don't care about the past for streams
 	var err error
-	c.Consumer, err = kafkautils.NewConsumer(c.kafkaUrl, groupID, overrideOpts...)
+	c.Consumer, err = kafkautils.NewConsumer(c.kafkaUrl, c.name, overrideOpts...)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to create kafka consumer")
 		return err
