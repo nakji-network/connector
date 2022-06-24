@@ -3,6 +3,8 @@ package main
 import (
 	"github.com/nakji-network/connector"
 	"github.com/nakji-network/connector/examples/compound"
+
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
@@ -25,7 +27,10 @@ func main() {
 	}
 	addresses := compound.ConvertRawAddress(rawAddrs...)
 
-	c := connector.NewConnector()
+	c, err := connector.NewProducerConnector()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to instantiate connector")
+	}
 
 	compoundConnector := compound.Connector{
 		Connector: c,

@@ -97,11 +97,11 @@ func (c *Connector) Start() {
 				log.Error().Err(err).Msg("Kafka write proto")
 			}
 			// Commit Kafka Transaction
-			err = c.Producer.CommitTransaction(nil)
+			err = c.ProducerInterface.CommitTransaction(nil)
 			if err != nil {
 				log.Error().Err(err).Msg("Processor: Failed to commit transaction")
 
-				err = c.Producer.AbortTransaction(nil)
+				err = c.ProducerInterface.AbortTransaction(nil)
 				if err != nil {
 					log.Fatal().Err(err).Msg("")
 				}
@@ -118,7 +118,7 @@ func (c *Connector) Start() {
 			// Cleanly close the connection by sending a close message and then
 			// waiting (with timeout) for the server to close the connection.
 			client.Close()
-			c.Producer.Close()
+			c.ProducerInterface.Close()
 			return
 		}
 	}
