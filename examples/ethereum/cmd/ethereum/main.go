@@ -4,10 +4,15 @@ package main
 import (
 	"github.com/nakji-network/connector"
 	"github.com/nakji-network/connector/examples/ethereum"
+
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
-	c := connector.NewConnector()
+	c, err := connector.NewProducerConnector()
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to instantiate connector")
+	}
 
 	ethConnector := ethereum.EthereumConnector{
 		Connector: c,
