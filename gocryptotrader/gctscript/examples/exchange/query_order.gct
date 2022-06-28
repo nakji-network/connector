@@ -1,0 +1,9 @@
+fmt := import("fmt")
+exch := import("exchange")
+
+load := func() {
+   info := exch.orderquery("binance", "4491600698", "BTC-USDT", "spot")
+   fmt.println(info)
+}
+
+load()
