@@ -283,10 +283,14 @@ start:
 				if err != nil {
 					if err.(kafka.Error).IsRetriable() {
 						log.Warn().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to commit transactions, retrying..")
-						time.Sleep(duration)
 						goto retry
+
+					} else if err.(kafka.Error).Code() == kafka.ErrProducerFenced {
+						c.ProducerInterface.Close()
+
 					} else {
 						log.Error().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to commit transactions, aborting..")
+
 						err = c.ProducerInterface.AbortTransaction(context.TODO())
 						if err != nil {
 							cancel()
