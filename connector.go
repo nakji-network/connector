@@ -281,7 +281,6 @@ start:
 			if hasMessage {
 				err = c.ProducerInterface.CommitTransaction(ctx)
 				if err != nil {
-					fmt.Println("error code ", err.(kafka.Error).Code())
 					if err.(kafka.Error).IsRetriable() {
 						log.Warn().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to commit transactions, retrying..")
 						time.Sleep(duration)
