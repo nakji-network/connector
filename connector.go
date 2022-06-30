@@ -263,7 +263,7 @@ func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.Topic
 
 func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
 	duration := time.Second * 10
-	timer := time.NewTicker(duration)
+	ticker := time.NewTicker(duration)
 	hasMessage := false
 
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
@@ -276,7 +276,7 @@ start:
 
 	for msg := range input {
 		select {
-		case <-timer.C:
+		case <-ticker.C:
 		retry:
 			if hasMessage {
 				err = c.ProducerInterface.CommitTransaction(ctx)
@@ -296,15 +296,14 @@ start:
 					}
 				}
 
-				timer.Reset(duration)
+				ticker.Reset(duration)
 				hasMessage = false
 				goto start
 			}
-
 		default:
 			hasMessage = true
 			topic := c.generateTopicFromProto(msg)
-			c.ProducerInterface.ProduceMsg(topic, msg, nil)
+			c.ProducerInterface.ProduceMsg(topic, msg, nil, time.Time{}, nil)
 		}
 	}
 	cancel()
