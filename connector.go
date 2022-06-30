@@ -271,7 +271,7 @@ func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
 start:
 	err := c.ProducerInterface.BeginTransaction()
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to begin transaction")
+		log.Fatal().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to begin transaction")
 	}
 
 	for msg := range input {
@@ -281,17 +281,17 @@ start:
 			if hasMessage {
 				err = c.ProducerInterface.CommitTransaction(ctx)
 				if err != nil {
+					fmt.Println("error code ", err.(kafka.Error).Code())
 					if err.(kafka.Error).IsRetriable() {
-						log.Warn().Err(err).Msg("failed to commit transactions, retrying..")
+						log.Warn().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to commit transactions, retrying..")
+						time.Sleep(duration)
 						goto retry
-
 					} else {
-						log.Error().Err(err).Msg("failed to commit transactions, aborting..")
-
-						err = c.ProducerInterface.AbortTransaction(ctx)
+						log.Error().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to commit transactions, aborting..")
+						err = c.ProducerInterface.AbortTransaction(context.TODO())
 						if err != nil {
 							cancel()
-							log.Fatal().Err(err).Msg("failed to abort transaction, killing producer..")
+							log.Fatal().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to abort transaction, killing producer..")
 						}
 					}
 				}
