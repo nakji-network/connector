@@ -275,7 +275,7 @@ start:
 
 	err := c.ProducerInterface.BeginTransaction()
 	if err != nil {
-		log.Error().Err(err).
+		log.Fatal().Err(err).
 			Str("error code", err.(kafka.Error).Code().String()).
 			Msg("failed to begin transaction")
 	}
