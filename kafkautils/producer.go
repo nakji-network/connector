@@ -21,7 +21,8 @@ type ProducerInterface interface {
 	CommitTransaction(context.Context) error
 	AbortTransaction(context.Context) error
 	EnableTransactions() error
-	ProduceMsg(Topic, proto.Message, []byte, time.Time, chan kafka.Event) error
+	ListenDeliveryChan(delivery chan kafka.Event)
+	ProduceMsg(topic Topic, msg proto.Message, key []byte, timestamp time.Time, deliveryChan chan kafka.Event) error
 	WriteAndCommitSink(<-chan *Message)
 	WriteAndCommit(Topic, []byte, proto.Message) error
 	MakeQueueTransactionSink() chan *Message
@@ -63,7 +64,7 @@ func MustNewProducer(brokers, transactionalID string) *Producer {
 func NewProducer(brokers, transactionalID string) (*Producer, error) {
 	producer, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers": brokers,
-		//"enable.idempotence":     true,
+		// "enable.idempotence":     true,
 		"linger.ms":              KafkaProducerLingerMS,
 		"request.timeout.ms":     KafkaProducerRequestTimeoutMS,
 		"transactional.id":       transactionalID,
@@ -368,4 +369,26 @@ func (p *Producer) ProduceMsg(topic Topic, msg proto.Message, key []byte, timest
 	}
 
 	return p.Produce(kafkaMsg, delivery)
+}
+
+func (p *Producer) ListenDeliveryChan(delivery chan kafka.Event) {
+	for e := range delivery {
+		switch ev := e.(type) {
+		case *kafka.Message:
+			if ev.TopicPartition.Error != nil {
+				err := ev.TopicPartition.Error
+				log.Warn().Err(err).
+					Str("error code", err.(kafka.Error).Code().String()).
+					Interface("partition", ev.TopicPartition).
+					Msg("failed to deliver message")
+
+			} else {
+				log.Debug().
+					Str("topic", *ev.TopicPartition.Topic).
+					Int32("partition", ev.TopicPartition.Partition).
+					Interface("offset", ev.TopicPartition.Offset).
+					Msg("successfully produced record")
+			}
+		}
+	}
 }
