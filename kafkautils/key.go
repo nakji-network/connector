@@ -32,6 +32,9 @@ func (k Key) String() string {
 }
 
 func ParseKey(s []byte) (Key, error) {
+	if s == nil {
+		return Key{}, nil
+	}
 	k := strings.Split(string(s), KeyDelimiter)
 	if len(k) != 2 {
 		return Key{}, fmt.Errorf("Cannot parse key, needs 2 parts separated by \"%s\": %s", KeyDelimiter, string(s))

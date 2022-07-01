@@ -261,6 +261,8 @@ func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.Topic
 	return tt
 }
 
+//	InitProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
+//	It wraps messages in Kafka Transactions to ensure Exactly Once Semantics.
 func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
 	duration := time.Second * 1
 
@@ -312,6 +314,8 @@ start:
 						}
 					}
 				}
+
+				log.Info().Msg("successfully committed transactions")
 
 				ticker.Reset(duration)
 
