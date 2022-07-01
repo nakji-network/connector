@@ -265,10 +265,6 @@ func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
 	duration := time.Second * 1
 
 	ticker := time.NewTicker(duration)
-	delivery := make(chan kafka.Event)
-	defer close(delivery)
-
-	go c.ProducerInterface.ListenDeliveryChan(delivery)
 
 start:
 	hasMessage := false
@@ -325,7 +321,7 @@ start:
 
 			hasMessage = true
 			topic := c.generateTopicFromProto(msg)
-			c.ProducerInterface.ProduceMsg(topic, msg, nil, time.Time{}, delivery)
+			c.ProducerInterface.ProduceMsg(topic, msg, nil, time.Time{}, nil)
 		}
 	}
 }
