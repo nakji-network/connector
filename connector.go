@@ -1,20 +1,23 @@
 package connector
 
 import (
+	"context"
 	"fmt"
 	"net/http"
-
-	"github.com/confluentinc/confluent-kafka-go/kafka"
-	"github.com/heptiolabs/healthcheck"
-	"github.com/nakji-network/connector/protoregistry"
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/viper"
-	"google.golang.org/protobuf/proto"
+	"time"
 
 	"github.com/nakji-network/connector/chain"
 	"github.com/nakji-network/connector/config"
 	"github.com/nakji-network/connector/kafkautils"
 	"github.com/nakji-network/connector/monitor"
+	"github.com/nakji-network/connector/protoregistry"
+
+	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/heptiolabs/healthcheck"
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type Connector struct {
@@ -256,4 +259,55 @@ func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.Topic
 	}
 
 	return tt
+}
+
+func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
+	duration := time.Second * 10
+	ticker := time.NewTicker(duration)
+	hasMessage := false
+
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+
+start:
+	err := c.ProducerInterface.BeginTransaction()
+	if err != nil {
+		log.Fatal().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to begin transaction")
+	}
+
+	for msg := range input {
+		select {
+		case <-ticker.C:
+		retry:
+			if hasMessage {
+				err = c.ProducerInterface.CommitTransaction(ctx)
+				if err != nil {
+					if err.(kafka.Error).IsRetriable() {
+						log.Warn().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to commit transactions, retrying..")
+						goto retry
+
+					} else if err.(kafka.Error).Code() == kafka.ErrProducerFenced {
+						c.ProducerInterface.Close()
+
+					} else {
+						log.Error().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to commit transactions, aborting..")
+
+						err = c.ProducerInterface.AbortTransaction(context.TODO())
+						if err != nil {
+							cancel()
+							log.Fatal().Err(err).Str("error code", err.(kafka.Error).Code().String()).Msg("failed to abort transaction, killing producer..")
+						}
+					}
+				}
+
+				ticker.Reset(duration)
+				hasMessage = false
+				goto start
+			}
+		default:
+			hasMessage = true
+			topic := c.generateTopicFromProto(msg)
+			c.ProducerInterface.ProduceMsg(topic, msg, nil, time.Time{}, nil)
+		}
+	}
+	cancel()
 }
