@@ -371,6 +371,8 @@ func (p *Producer) ProduceMsg(topic Topic, msg proto.Message, key []byte, timest
 	return p.Produce(kafkaMsg, delivery)
 }
 
+//	ListenDeliveryChan processes acknowledgements from Kafka broker upon Produce() calls.
+//	Using this method will disable global event processing by the producer.
 func (p *Producer) ListenDeliveryChan(delivery chan kafka.Event) {
 	for e := range delivery {
 		switch ev := e.(type) {
