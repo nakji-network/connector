@@ -7,7 +7,9 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
+	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	gomock "github.com/golang/mock/gomock"
 	kafkautils "github.com/nakji-network/connector/kafkautils"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -118,6 +120,18 @@ func (mr *MockProducerInterfaceMockRecorder) InitTransactions(arg0 interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InitTransactions", reflect.TypeOf((*MockProducerInterface)(nil).InitTransactions), arg0)
 }
 
+// ListenDeliveryChan mocks base method.
+func (m *MockProducerInterface) ListenDeliveryChan(arg0 chan kafka.Event) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "ListenDeliveryChan", arg0)
+}
+
+// ListenDeliveryChan indicates an expected call of ListenDeliveryChan.
+func (mr *MockProducerInterfaceMockRecorder) ListenDeliveryChan(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListenDeliveryChan", reflect.TypeOf((*MockProducerInterface)(nil).ListenDeliveryChan), arg0)
+}
+
 // MakeQueueTransactionSink mocks base method.
 func (m *MockProducerInterface) MakeQueueTransactionSink() chan *kafkautils.Message {
 	m.ctrl.T.Helper()
@@ -130,6 +144,20 @@ func (m *MockProducerInterface) MakeQueueTransactionSink() chan *kafkautils.Mess
 func (mr *MockProducerInterfaceMockRecorder) MakeQueueTransactionSink() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MakeQueueTransactionSink", reflect.TypeOf((*MockProducerInterface)(nil).MakeQueueTransactionSink))
+}
+
+// ProduceMsg mocks base method.
+func (m *MockProducerInterface) ProduceMsg(arg0 kafkautils.Topic, arg1 protoreflect.ProtoMessage, arg2 []byte, arg3 time.Time, arg4 chan kafka.Event) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProduceMsg", arg0, arg1, arg2, arg3, arg4)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ProduceMsg indicates an expected call of ProduceMsg.
+func (mr *MockProducerInterfaceMockRecorder) ProduceMsg(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProduceMsg", reflect.TypeOf((*MockProducerInterface)(nil).ProduceMsg), arg0, arg1, arg2, arg3, arg4)
 }
 
 // WriteAndCommit mocks base method.
