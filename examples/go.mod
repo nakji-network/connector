@@ -9,7 +9,7 @@ replace github.com/nakji-network/connector/examples => ./
 require (
 	github.com/ethereum/go-ethereum v1.10.15
 	github.com/golang/protobuf v1.5.2
-	github.com/nakji-network/connector v0.0.1-beta.1.0.20220623141451-79a7cb0e4d8e
+	github.com/nakji-network/connector v0.0.1-beta.1.0.20220701183428-93591c3ee390
 	github.com/rs/zerolog v1.26.1
 	google.golang.org/protobuf v1.27.1
 )
