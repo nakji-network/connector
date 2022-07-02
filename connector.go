@@ -149,13 +149,6 @@ func (c *Connector) SubscribeExample() error {
 
 // ProduceMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message) error {
-	if !c.producerStarted {
-		err := c.startProducer()
-		if err != nil {
-			return err
-		}
-	}
-
 	topic := c.generateTopicFromProto(msg)
 	key := kafkautils.NewKey(namespace, subject)
 	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
@@ -163,6 +156,13 @@ func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message)
 
 // ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto.Message) error {
+	if !c.producerStarted {
+		err := c.startProducer()
+		if err != nil {
+			return err
+		}
+	}
+
 	// Start a new transaction
 	err := c.ProducerInterface.BeginTransaction()
 	if err != nil {
