@@ -21,46 +21,24 @@ import (
 )
 
 type Connector struct {
-	manifest *manifest
-	Config   *viper.Viper
-	Health   healthcheck.Handler
-
-	env      kafkautils.Env
-	MsgType  kafkautils.MsgType
-	kafkaUrl string
-	kafkautils.ProducerInterface
 	*kafkautils.Consumer
+	kafkautils.ProducerInterface
+
+	consumerStarted bool
+	env             kafkautils.Env
+	kafkaUrl        string
+	manifest        *manifest
+	producerStarted bool
 
 	ChainClients     *chain.Clients
+	Config           *viper.Viper
+	Health           healthcheck.Handler
+	MsgType          kafkautils.MsgType
 	ProtoRegistryCli *protoregistry.Client
 }
 
-func NewProducerConnector() (*Connector, error) {
-	c := newConnector()
-	err := c.startProducer()
-	if err != nil {
-		return nil, err
-	}
-	return c, nil
-}
-
-// NewConsumerConnector creates a message queue consumer.
-// Common overrideOpts are
-//		kafka.ConfigMap{
-//			"auto.offset.reset": "latest",
-//		}
-// for sink connectors to ignore all existing messages in the queue.
-func NewConsumerConnector(overrideOpts ...kafka.ConfigMap) (*Connector, error) {
-	c := newConnector()
-	err := c.startConsumer(overrideOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return c, nil
-}
-
-// newConnector returns a base connector implementation that other connectors can embed to add on to.
-func newConnector() *Connector {
+// NewConnector returns a base connector implementation that other connectors can embed to add on to.
+func NewConnector() (*Connector, error) {
 	conf := config.GetConfig()
 	conf.SetDefault("kafka.env", "dev")
 	conf.SetDefault("protoregistry.host", "localhost:9191")
@@ -68,10 +46,10 @@ func newConnector() *Connector {
 	rpcMap := make(map[string]chain.RPCs)
 	err := conf.UnmarshalKey("rpcs", &rpcMap)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Could not load RPC list from config file")
+		return nil, fmt.Errorf("could not load RPC list from config file")
 	}
 
-	// Create a proto registry client
+	// Create a proto registry client to dynamically load protobuf definitions.
 	prc := protoregistry.NewClient(conf.GetString("protoregistry.host"))
 
 	c := &Connector{
@@ -97,9 +75,10 @@ func newConnector() *Connector {
 	go http.ListenAndServe("0.0.0.0:8080", c.Health)
 	log.Info().Str("addr", "0.0.0.0:8080").Msg("healthcheck listening on /live and /ready")
 
+	//	Start Prometheus monitoring
 	monitor.StartMonitor(c.id())
 
-	return c
+	return c, nil
 }
 
 // id() returns a unique id for this connector based on the manifest.
@@ -107,6 +86,13 @@ func newConnector() *Connector {
 func (c *Connector) id() string {
 	return fmt.Sprintf("%s-%s-%s-%s", c.manifest.Author, c.manifest.Name, c.manifest.Version, c.env)
 }
+
+// NewConsumerConnector creates a message queue consumer.
+// Common overrideOpts are
+//		kafka.ConfigMap{
+//			"auto.offset.reset": "latest",
+//		}
+// for sink connectors to ignore all existing messages in the queue.
 
 // Subscribe subscribes to a list of topics.
 // To read:
@@ -118,7 +104,14 @@ func (c *Connector) id() string {
 // 		// commit to kafka to acknowledge receipt
 // 		consumer.CommitMessage(msg.Message)
 // 	}
-func (c *Connector) Subscribe(topics []kafkautils.Topic) (<-chan kafkautils.Message, error) {
+func (c *Connector) Subscribe(topics []kafkautils.Topic, overrideOpts ...kafka.ConfigMap) (<-chan kafkautils.Message, error) {
+	if !c.consumerStarted {
+		err := c.startConsumer(overrideOpts...)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if err := c.SubscribeTopics(topics); err != nil {
 		log.Error().Err(err).Msg("kafka subscribe proto error")
 		return nil, err
@@ -163,6 +156,13 @@ func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message)
 
 // ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto.Message) error {
+	if !c.producerStarted {
+		err := c.startProducer()
+		if err != nil {
+			return err
+		}
+	}
+
 	// Start a new transaction
 	err := c.ProducerInterface.BeginTransaction()
 	if err != nil {
@@ -205,6 +205,7 @@ func (c *Connector) startProducer() error {
 	if err != nil {
 		return err
 	}
+	c.producerStarted = true
 
 	return nil
 }
@@ -224,6 +225,7 @@ func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
 		log.Error().Err(err).Msg("Failed to create kafka consumer")
 		return err
 	}
+	c.consumerStarted = true
 
 	return nil
 }
@@ -264,9 +266,9 @@ func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.Topic
 //	InitProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
 //	It wraps messages in Kafka Transactions to ensure Exactly Once Semantics.
 func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
-	duration := time.Second * 1
 
-	ticker := time.NewTicker(duration)
+	c.startProducer()
+	ticker := time.NewTicker(time.Second)
 
 start:
 	hasMessage := false
@@ -316,8 +318,6 @@ start:
 				}
 
 				log.Info().Msg("successfully committed transactions")
-
-				ticker.Reset(duration)
 
 				goto start
 			}
