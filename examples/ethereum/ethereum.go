@@ -52,7 +52,7 @@ func (c *EthereumConnector) Start() {
 				// EthBlock -> Block -> Protobuf -> kafka
 				var blockData Block
 				blockData.UnmarshalEthBlock(block)
-				err = c.ProduceMessage("ethereum", "ethereum", &blockData)
+				err = c.ProduceAndCommitMessage("ethereum", "ethereum", &blockData)
 				if err != nil {
 					log.Error().Err(err).Msg("Kafka write proto")
 				}
@@ -63,28 +63,11 @@ func (c *EthereumConnector) Start() {
 					txData.UnmarshalEthTransaction(tx)
 					txData.Timestamp = blockData.Timestamp // Timestamp isn't in the raw transaction from geth
 
-					err = c.ProduceMessage("ethereum", "ethereum", &txData)
+					err = c.ProduceAndCommitMessage("ethereum", "ethereum", &txData)
 					if err != nil {
 						log.Error().Err(err).Msg("Kafka write proto")
 					}
 				}
-
-				// Commit Kafka Transaction
-				err = c.ProducerInterface.CommitTransaction(nil)
-				if err != nil {
-					log.Error().Err(err).Msg("Processor: Failed to commit transaction")
-
-					err = c.ProducerInterface.AbortTransaction(nil)
-					if err != nil {
-						log.Fatal().Err(err).Msg("")
-					}
-				}
-				// Start a new transaction
-				err = c.BeginTransaction()
-				if err != nil {
-					log.Fatal().Err(err).Msg("")
-				}
-
 			}
 		}
 	}()

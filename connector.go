@@ -245,6 +245,11 @@ func (c *Connector) generateTopicFromProto(msg proto.Message) kafkautils.Topic {
 
 // RegisterProtos generates kafka topic and protobuf type mappings from proto.Message and registers them dynamically.
 func (c *Connector) RegisterProtos(protos ...proto.Message) {
+	if c.env == kafkautils.Dev {
+		log.Debug().Msg("protoregistry is disabled in dev mode, set kafka.env to other values (e.g., test, staging) to enable it")
+		return
+	}
+
 	tt := c.buildTopicTypes(protos...)
 
 	err := c.ProtoRegistryCli.RegisterDynamicTopics(tt, c.MsgType)

@@ -14,10 +14,10 @@ import (
 type Env string
 
 const (
-	prod    Env = "prod"
-	staging     = "staging"
-	dev         = "dev"
-	test        = "test"
+	Prod    Env = "prod"
+	Staging     = "staging"
+	Dev         = "dev"
+	Test        = "test"
 )
 
 const (
