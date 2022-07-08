@@ -3,7 +3,7 @@ log:
   format: console
 kafka:
   url: localhost:9092
-  env: staging
+  env: staging # set it to dev if you would like to disable protoregistry
 rpcs:
   ethereum:
     full:

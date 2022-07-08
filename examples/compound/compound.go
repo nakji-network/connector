@@ -92,25 +92,9 @@ func (c *Connector) Start() {
 				continue
 			}
 			// Not sure what value needs to be passed as subject
-			err = c.ProduceMessage(namespace, evLog.Address.Hex(), msg)
+			err = c.ProduceAndCommitMessage(namespace, evLog.Address.Hex(), msg)
 			if err != nil {
 				log.Error().Err(err).Msg("Kafka write proto")
-			}
-			// Commit Kafka Transaction
-			err = c.ProducerInterface.CommitTransaction(nil)
-			if err != nil {
-				log.Error().Err(err).Msg("Processor: Failed to commit transaction")
-
-				err = c.ProducerInterface.AbortTransaction(nil)
-				if err != nil {
-					log.Fatal().Err(err).Msg("")
-				}
-			}
-			log.Info().Interface("msg", msg).Msg("message delivered")
-			// Start a new transaction
-			err = c.BeginTransaction()
-			if err != nil {
-				log.Fatal().Err(err).Msg("")
 			}
 		case <-interrupt:
 			log.Info().Msg("interrupt")
