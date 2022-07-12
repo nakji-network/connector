@@ -276,13 +276,7 @@ func (p *Producer) WriteKafkaMessages(topic Topic, key []byte, value proto.Messa
 
 // WriteAndCommit writes for transactional producers, committing transaction after each write
 func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message) error {
-	// Start a new transaction
-	err := p.BeginTransaction()
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
-	err = p.WriteKafkaMessages(topic, key, value)
+	err := p.WriteKafkaMessages(topic, key, value)
 	if err != nil {
 		return err
 	}
@@ -309,18 +303,53 @@ retry:
 }
 
 func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
+	ticker := time.NewTicker(time.Second)
+	hasMessage := false
+
+	// Start a new transaction
+	err := p.BeginTransaction()
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
 	for msg := range in {
-		err := p.WriteAndCommit(
-			msg.Topic,
-			msg.Key.Bytes(),
-			msg.ProtoMsg,
-		)
-		if err != nil {
-			log.Error().Err(err).
-				Str("topic", msg.Topic.String()).
-				Str("key", msg.Key.String()).
-				Interface("protoMsg", msg.ProtoMsg).
-				Msg("Write to kafka error")
+		select {
+		case <-ticker.C:
+			if hasMessage {
+				err := p.WriteAndCommit(
+					msg.Topic,
+					msg.Key.Bytes(),
+					msg.ProtoMsg,
+				)
+
+				if err != nil {
+					log.Error().Err(err).
+						Str("topic", msg.Topic.String()).
+						Str("key", msg.Key.String()).
+						Interface("protoMsg", msg.ProtoMsg).
+						Msg("Write to kafka error")
+				}
+
+				// Start a new transaction
+				err = p.BeginTransaction()
+				if err != nil {
+					log.Fatal().Err(err).Msg("")
+				}
+
+				hasMessage = false
+			}
+
+		default:
+			hasMessage = true
+			err := p.WriteKafkaMessages(msg.Topic, msg.Key.Bytes(), msg.ProtoMsg)
+
+			if err != nil {
+				log.Error().Err(err).
+					Str("topic", msg.Topic.String()).
+					Str("key", msg.Key.String()).
+					Interface("protoMsg", msg.ProtoMsg).
+					Msg("Write to kafka error")
+			}
 		}
 	}
 }
