@@ -299,12 +299,21 @@ retry:
 		}
 	}
 
+	err = p.BeginTransaction()
+	if err != nil {
+		log.Fatal().Err(err).Msg("")
+	}
+
 	return nil
 }
 
+const txBatchSize = 50
+
+// WriteAndCommitSink will wrap messages in a transaction. The transaction is committed
+// once there are 10 messages in the transaction or if the interval timer has been hit.
 func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 	ticker := time.NewTicker(time.Second)
-	hasMessage := false
+	msgCounter := 0
 
 	// Start a new transaction
 	err := p.BeginTransaction()
@@ -315,7 +324,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 	for msg := range in {
 		select {
 		case <-ticker.C:
-			if hasMessage {
+			if msgCounter > 0 {
 				err := p.WriteAndCommit(
 					msg.Topic,
 					msg.Key.Bytes(),
@@ -330,19 +339,30 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 						Msg("Write to kafka error")
 				}
 
-				// Start a new transaction
-				err = p.BeginTransaction()
-				if err != nil {
-					log.Fatal().Err(err).Msg("")
-				}
-
-				hasMessage = false
+				msgCounter = 0
 			}
 
 		default:
-			hasMessage = true
-			err := p.WriteKafkaMessages(msg.Topic, msg.Key.Bytes(), msg.ProtoMsg)
+			if msgCounter >= txBatchSize {
+				err := p.WriteAndCommit(
+					msg.Topic,
+					msg.Key.Bytes(),
+					msg.ProtoMsg,
+				)
 
+				if err != nil {
+					log.Error().Err(err).
+						Str("topic", msg.Topic.String()).
+						Str("key", msg.Key.String()).
+						Interface("protoMsg", msg.ProtoMsg).
+						Msg("Write to kafka error")
+				}
+
+				msgCounter = 0
+				continue
+			}
+
+			err := p.WriteKafkaMessages(msg.Topic, msg.Key.Bytes(), msg.ProtoMsg)
 			if err != nil {
 				log.Error().Err(err).
 					Str("topic", msg.Topic.String()).
@@ -350,6 +370,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 					Interface("protoMsg", msg.ProtoMsg).
 					Msg("Write to kafka error")
 			}
+			msgCounter++
 		}
 	}
 }
