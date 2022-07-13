@@ -25,7 +25,7 @@ type ISubscription interface {
 	Err() <-chan error
 	Headers() chan *types.Header
 	Logs() chan types.Log
-	Resubscribe()
+	Subscribe()
 	Unsubscribe()
 }
 
@@ -93,8 +93,8 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 	return &s, nil
 }
 
-//	Resubscribe subscribes to header and event logs.
-func (s *Subscription) Resubscribe() {
+//	Subscribe subscribes to header and event logs.
+func (s *Subscription) Subscribe() {
 	log.Info().Str("network", s.network).Msg("subscribing..")
 	go s.subscribeHeaders()
 	go s.subscribeLogs()
@@ -142,10 +142,6 @@ func (s *Subscription) Logs() chan types.Log {
 
 //	getBlockTimeFromChain queries the blockchain and retrieves block time.
 func (s *Subscription) getBlockTimeFromChain(blockHash common.Hash) (uint64, error) {
-	if val, ok := s.cache.Get(blockHash.Hex()); ok {
-		return val.(uint64), nil
-	}
-
 	header, err := s.client.HeaderByHash(s.context, blockHash)
 	if err != nil {
 		if header != nil {
@@ -170,7 +166,7 @@ func (s *Subscription) subscribeHeaders() {
 		select {
 		case err := <-hs.Err():
 			if isRetryable(err) {
-				s.Resubscribe()
+				s.Subscribe()
 			} else {
 				s.errchan <- err
 				return
@@ -229,7 +225,7 @@ func (s *Subscription) subscribeLogs() {
 
 		case err = <-subErrChan:
 			if isRetryable(err) {
-				s.Resubscribe()
+				s.Subscribe()
 			} else {
 				s.errchan <- err
 				return
