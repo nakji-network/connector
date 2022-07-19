@@ -281,10 +281,12 @@ func isRetryable(err error) bool {
 	// error 1: Message timed out
 	// error 2: Connection reset by peer
 	// error 3: websocket: close 1006 (abnormal closure)
+	// error 4: unexpected EOF
 	if err == nil {
 		return false
 	}
 	return strings.Contains(err.Error(), "timed") ||
 		strings.Contains(err.Error(), "reset") ||
-		strings.Contains(err.Error(), "1006")
+		strings.Contains(err.Error(), "1006") ||
+		strings.Contains(err.Error(), "EOF")
 }
