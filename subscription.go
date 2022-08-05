@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"os"
 	"os/signal"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -51,9 +50,6 @@ type Subscription struct {
 
 	//	Number of blocks from latest block number to retrieve historical events
 	numBlocks uint64
-
-	//	Force garbage collection periodically
-	tickerGC *time.Ticker
 }
 
 const allowedBlocksBehind uint64 = 60
@@ -74,7 +70,6 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		logs:             make(chan types.Log),
 		network:          network,
 		numBlocks:        numBlocks,
-		tickerGC:         time.NewTicker(time.Hour),
 	}
 
 	//	Create cache for storing block timestamp
@@ -169,9 +164,6 @@ func (s *Subscription) subscribeHeaders() {
 
 	for {
 		select {
-		case <-s.tickerGC.C:
-			runtime.GC()
-
 		case err := <-hs.Err():
 			if isRetryable(err) {
 				s.Subscribe()
