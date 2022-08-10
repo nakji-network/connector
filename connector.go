@@ -285,13 +285,12 @@ start:
 			Msg("failed to begin transaction")
 	}
 
-	for msg := range input {
+	for {
 		select {
 		case <-ticker.C:
 
 		retry:
 			if hasMessage {
-
 				err := c.ProducerInterface.CommitTransaction(context.TODO())
 				if err != nil {
 					if err.(kafka.Error).IsRetriable() {
@@ -326,7 +325,7 @@ start:
 
 				goto start
 			}
-		default:
+		case msg := <-input:
 
 			hasMessage = true
 			topic := c.generateTopicFromProto(msg)
