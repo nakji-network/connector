@@ -35,7 +35,10 @@ type Connector struct {
 	Health           healthcheck.Handler
 	MsgType          kafkautils.MsgType
 	ProtoRegistryCli *protoregistry.Client
-	Sink             chan protoreflect.ProtoMessage
+
+	//	EventSink can be used to push incoming on-chain events to Kafka.
+	// 	All kafka Produce logic will be handled under the hood.
+	EventSink chan<- protoreflect.ProtoMessage
 }
 
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.
@@ -71,6 +74,11 @@ func NewConnector() (*Connector, error) {
 	log.Info().
 		Str("id", c.id()).
 		Msg("Starting connector")
+
+	//	Create kafka Produce channel and provide an outlet to connector object
+	eventSink := make(chan protoreflect.ProtoMessage)
+	go c.InitProduceChannel(eventSink)
+	c.EventSink = eventSink
 
 	// For Liveness and Readiness Probe checks
 	go http.ListenAndServe("0.0.0.0:8080", c.Health)
