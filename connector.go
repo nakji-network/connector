@@ -35,6 +35,7 @@ type Connector struct {
 	Health           healthcheck.Handler
 	MsgType          kafkautils.MsgType
 	ProtoRegistryCli *protoregistry.Client
+	Sink             chan protoreflect.ProtoMessage
 }
 
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.

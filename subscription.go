@@ -210,7 +210,7 @@ func (s *Subscription) subscribeLogs() {
 	logch := make(chan types.Log)
 	subErrChan, err := chain.ChunkedSubscribeFilterLogs(s.context, s.client, q, logch, 0)
 	if err != nil {
-		log.Fatal().Msg("failed to subscribe to event logs")
+		log.Fatal().Err(err).Msg("failed to subscribe to event logs")
 	}
 
 	tWait := time.Second
@@ -282,11 +282,13 @@ func isRetryable(err error) bool {
 	// error 2: Connection reset by peer
 	// error 3: websocket: close 1006 (abnormal closure)
 	// error 4: unexpected EOF
+	// error 5: websocket: close 1001 (going away): upstream went away
 	if err == nil {
 		return false
 	}
 	return strings.Contains(err.Error(), "timed") ||
 		strings.Contains(err.Error(), "reset") ||
 		strings.Contains(err.Error(), "1006") ||
-		strings.Contains(err.Error(), "EOF")
+		strings.Contains(err.Error(), "EOF") ||
+		strings.Contains(err.Error(), "1001")
 }
