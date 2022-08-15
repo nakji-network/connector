@@ -64,10 +64,8 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		context:          ctx,
 		errchan:          make(chan error, 1),
 		fromBlock:        fromBlock,
-		headers:          make(chan *types.Header),
 		interrupt:        make(chan os.Signal, 1),
 		isHeaderRequired: false,
-		logs:             make(chan types.Log),
 		network:          network,
 		numBlocks:        numBlocks,
 	}
@@ -154,6 +152,11 @@ func (s *Subscription) getBlockTimeFromChain(blockHash common.Hash) (uint64, err
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeHeaders() {
+	if s.headers != nil {
+		close(s.headers)
+	}
+	s.headers = make(chan *types.Header)
+
 	headers := make(chan *types.Header)
 	hs, err := s.client.SubscribeNewHead(s.context, headers)
 	if err != nil {
@@ -165,12 +168,16 @@ func (s *Subscription) subscribeHeaders() {
 	for {
 		select {
 		case err := <-hs.Err():
-			if isRetryable(err) {
+			log.Error().Err(err).Msg("event subscription failed")
+
+			if isIgnorable(err) {
+				continue
+			} else if isRetryable(err) {
 				s.Subscribe()
 			} else {
 				s.errchan <- err
-				return
 			}
+			return
 
 		case header := <-headers:
 
@@ -203,6 +210,11 @@ func (s *Subscription) subscribeHeaders() {
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeLogs() {
+	if s.logs != nil {
+		close(s.logs)
+	}
+	s.logs = make(chan types.Log)
+
 	q := ethereum.FilterQuery{
 		Addresses: s.addresses,
 	}
@@ -224,12 +236,16 @@ func (s *Subscription) subscribeLogs() {
 			return
 
 		case err = <-subErrChan:
-			if isRetryable(err) {
+			log.Error().Err(err).Msg("event subscription failed")
+
+			if isIgnorable(err) {
+				continue
+			} else if isRetryable(err) {
 				s.Subscribe()
 			} else {
 				s.errchan <- err
-				return
 			}
+			return
 
 		case vLog := <-logch:
 			_, err := s.GetBlockTime(vLog)
@@ -291,4 +307,12 @@ func isRetryable(err error) bool {
 		strings.Contains(err.Error(), "1006") ||
 		strings.Contains(err.Error(), "EOF") ||
 		strings.Contains(err.Error(), "1001")
+}
+
+func isIgnorable(err error) bool {
+	// error 1: websocket: close 1001 (going away): upstream went away
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "1001")
 }
