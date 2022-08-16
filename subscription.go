@@ -25,7 +25,6 @@ type ISubscription interface {
 	Err() <-chan error
 	Headers() chan *types.Header
 	Logs() chan types.Log
-	Subscribe()
 	Unsubscribe()
 }
 
@@ -64,8 +63,10 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		context:          ctx,
 		errchan:          make(chan error, 1),
 		fromBlock:        fromBlock,
+		headers:          make(chan *types.Header),
 		interrupt:        make(chan os.Signal, 1),
 		isHeaderRequired: false,
+		logs:             make(chan types.Log),
 		network:          network,
 		numBlocks:        numBlocks,
 	}
@@ -88,14 +89,10 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		}
 	}()
 
-	return &s, nil
-}
-
-//	Subscribe subscribes to header and event logs.
-func (s *Subscription) Subscribe() {
-	log.Info().Str("network", s.network).Msg("subscribing..")
 	go s.subscribeHeaders()
 	go s.subscribeLogs()
+
+	return &s, nil
 }
 
 //	Unsubscribe closes subscriptions and open channels.
@@ -152,10 +149,7 @@ func (s *Subscription) getBlockTimeFromChain(blockHash common.Hash) (uint64, err
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeHeaders() {
-	if s.headers != nil {
-		close(s.headers)
-	}
-	s.headers = make(chan *types.Header)
+	log.Info().Str("network", s.network).Msg("subscribing to headers..")
 
 	headers := make(chan *types.Header)
 	hs, err := s.client.SubscribeNewHead(s.context, headers)
@@ -164,16 +158,16 @@ func (s *Subscription) subscribeHeaders() {
 		s.errchan <- err
 		return
 	}
+	defer hs.Unsubscribe()
+	defer close(headers)
 
 	for {
 		select {
 		case err := <-hs.Err():
-			log.Error().Err(err).Msg("event subscription failed")
+			log.Error().Err(err).Msg("header subscription failed")
 
-			if isIgnorable(err) {
-				continue
-			} else if isRetryable(err) {
-				s.Subscribe()
+			if isRetryable(err) {
+				s.subscribeHeaders()
 			} else {
 				s.errchan <- err
 			}
@@ -210,20 +204,21 @@ func (s *Subscription) subscribeHeaders() {
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeLogs() {
-	if s.logs != nil {
-		close(s.logs)
-	}
-	s.logs = make(chan types.Log)
+	log.Info().Str("network", s.network).Msg("subscribing to event logs..")
 
 	q := ethereum.FilterQuery{
 		Addresses: s.addresses,
 	}
 
 	logch := make(chan types.Log)
-	subErrChan, err := chain.ChunkedSubscribeFilterLogs(s.context, s.client, q, logch, 0)
+	subs, subErrChan, err := chain.ChunkedSubscribeFilterLogs(s.context, s.client, q, logch, 0)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to subscribe to event logs")
 	}
+	for _, sub := range subs {
+		defer sub.Unsubscribe()
+	}
+	defer close(logch)
 
 	tWait := time.Second
 	tMin := time.Second
@@ -236,12 +231,10 @@ func (s *Subscription) subscribeLogs() {
 			return
 
 		case err = <-subErrChan:
-			log.Error().Err(err).Msg("event subscription failed")
+			log.Error().Err(err).Msg("event log subscription failed")
 
-			if isIgnorable(err) {
-				continue
-			} else if isRetryable(err) {
-				s.Subscribe()
+			if isRetryable(err) {
+				s.subscribeLogs()
 			} else {
 				s.errchan <- err
 			}
@@ -307,12 +300,4 @@ func isRetryable(err error) bool {
 		strings.Contains(err.Error(), "1006") ||
 		strings.Contains(err.Error(), "EOF") ||
 		strings.Contains(err.Error(), "1001")
-}
-
-func isIgnorable(err error) bool {
-	// error 1: websocket: close 1001 (going away): upstream went away
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "1001")
 }

@@ -44,7 +44,8 @@ func (c Clients) Ethereum(ctx context.Context, chainOverride ...string) *ethclie
 }
 
 // Subscribe pairs in address chunks. Default chunksize = 7350 for quiknode.
-func ChunkedSubscribeFilterLogs(ctx context.Context, client *ethclient.Client, filterQuery ethereum.FilterQuery, ch chan<- types.Log, chunksize int) (<-chan error, error) {
+func ChunkedSubscribeFilterLogs(ctx context.Context, client *ethclient.Client, filterQuery ethereum.FilterQuery, ch chan<- types.Log, chunksize int) (
+	[]ethereum.Subscription, <-chan error, error) {
 	// Split filterlog subscriptions into 7350 contracts due to json-rpc limitation (undocumented)
 	if chunksize == 0 {
 		chunksize = 7350
@@ -62,12 +63,14 @@ func ChunkedSubscribeFilterLogs(ctx context.Context, client *ethclient.Client, f
 		queries = append(queries, chunkQuery)
 	}
 
+	subs := make([]ethereum.Subscription, len(queries))
 	errcs := make([]<-chan error, len(queries))
 	for i, query := range queries {
 		sub, err := client.SubscribeFilterLogs(ctx, query, ch)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+		subs[i] = sub
 		errcs[i] = sub.Err()
 		log.Info().
 			Int("addresses", len(query.Addresses)).
@@ -75,7 +78,7 @@ func ChunkedSubscribeFilterLogs(ctx context.Context, client *ethclient.Client, f
 			Msg("Listening to logs")
 	}
 
-	return common.MergeErrChans(errcs...), nil
+	return subs, common.MergeErrChans(errcs...), nil
 }
 
 //	ChunkedFilterLogs queries the blockchain for past events in batches.
