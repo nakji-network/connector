@@ -283,16 +283,7 @@ func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
 
 	c.startProducer()
 	ticker := time.NewTicker(time.Second)
-
-start:
 	hasMessage := false
-
-	err := c.ProducerInterface.BeginTransaction()
-	if err != nil {
-		log.Fatal().Err(err).
-			Str("error code", err.(kafka.Error).Code().String()).
-			Msg("failed to begin transaction")
-	}
 
 	for {
 		select {
@@ -332,9 +323,17 @@ start:
 
 				log.Info().Msg("successfully committed transactions")
 
-				goto start
+				hasMessage = false
 			}
 		case msg := <-input:
+			if !hasMessage {
+				err := c.ProducerInterface.BeginTransaction()
+				if err != nil {
+					log.Fatal().Err(err).
+						Str("error code", err.(kafka.Error).Code().String()).
+						Msg("failed to begin transaction")
+				}
+			}
 
 			hasMessage = true
 			topic := c.generateTopicFromProto(msg)

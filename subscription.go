@@ -25,7 +25,6 @@ type ISubscription interface {
 	Err() <-chan error
 	Headers() chan *types.Header
 	Logs() chan types.Log
-	Subscribe()
 	Unsubscribe()
 }
 
@@ -90,14 +89,10 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		}
 	}()
 
-	return &s, nil
-}
-
-//	Subscribe subscribes to header and event logs.
-func (s *Subscription) Subscribe() {
-	log.Info().Str("network", s.network).Msg("subscribing..")
 	go s.subscribeHeaders()
 	go s.subscribeLogs()
+
+	return &s, nil
 }
 
 //	Unsubscribe closes subscriptions and open channels.
@@ -154,6 +149,8 @@ func (s *Subscription) getBlockTimeFromChain(blockHash common.Hash) (uint64, err
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeHeaders() {
+	log.Info().Str("network", s.network).Msg("subscribing to headers..")
+
 	headers := make(chan *types.Header)
 	hs, err := s.client.SubscribeNewHead(s.context, headers)
 	if err != nil {
@@ -161,16 +158,20 @@ func (s *Subscription) subscribeHeaders() {
 		s.errchan <- err
 		return
 	}
+	defer hs.Unsubscribe()
+	defer close(headers)
 
 	for {
 		select {
 		case err := <-hs.Err():
+			log.Error().Err(err).Msg("header subscription failed")
+
 			if isRetryable(err) {
-				s.Subscribe()
+				s.subscribeHeaders()
 			} else {
 				s.errchan <- err
-				return
 			}
+			return
 
 		case header := <-headers:
 
@@ -203,15 +204,21 @@ func (s *Subscription) subscribeHeaders() {
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeLogs() {
+	log.Info().Str("network", s.network).Msg("subscribing to event logs..")
+
 	q := ethereum.FilterQuery{
 		Addresses: s.addresses,
 	}
 
 	logch := make(chan types.Log)
-	subErrChan, err := chain.ChunkedSubscribeFilterLogs(s.context, s.client, q, logch, 0)
+	subs, subErrChan, err := chain.ChunkedSubscribeFilterLogs(s.context, s.client, q, logch, 0)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to subscribe to event logs")
 	}
+	for _, sub := range subs {
+		defer sub.Unsubscribe()
+	}
+	defer close(logch)
 
 	tWait := time.Second
 	tMin := time.Second
@@ -224,12 +231,14 @@ func (s *Subscription) subscribeLogs() {
 			return
 
 		case err = <-subErrChan:
+			log.Error().Err(err).Msg("event log subscription failed")
+
 			if isRetryable(err) {
-				s.Subscribe()
+				s.subscribeLogs()
 			} else {
 				s.errchan <- err
-				return
 			}
+			return
 
 		case vLog := <-logch:
 			_, err := s.GetBlockTime(vLog)
