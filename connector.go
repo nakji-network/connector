@@ -77,7 +77,7 @@ func NewConnector() (*Connector, error) {
 
 	//	Create kafka Produce channel and provide an outlet to connector object
 	eventSink := make(chan protoreflect.ProtoMessage)
-	go c.InitProduceChannel(eventSink)
+	go c.initProduceChannel(eventSink)
 	c.EventSink = eventSink
 
 	// For Liveness and Readiness Probe checks
@@ -279,7 +279,7 @@ func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.Topic
 
 //	InitProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
 //	It wraps messages in Kafka Transactions to ensure Exactly Once Semantics.
-func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
+func (c *Connector) initProduceChannel(input <-chan protoreflect.ProtoMessage) {
 
 	c.startProducer()
 	ticker := time.NewTicker(time.Second)
@@ -321,7 +321,7 @@ func (c *Connector) InitProduceChannel(input <-chan protoreflect.ProtoMessage) {
 					}
 				}
 
-				log.Info().Msg("successfully committed transactions")
+				log.Debug().Msg("successfully committed transactions")
 
 				hasMessage = false
 			}

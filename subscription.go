@@ -2,16 +2,15 @@ package connector
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/nakji-network/connector/chain"
 
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -29,29 +28,28 @@ type ISubscription interface {
 }
 
 type Subscription struct {
-	addresses         []common.Address
-	backfillOnce      sync.Once
-	cache             *lru.Cache
-	client            *ethclient.Client
-	context           context.Context
-	connector         *Connector
-	done              chan bool
-	errchan           chan error
-	fromBlock         uint64
-	headers           chan *types.Header
-	interrupt         chan os.Signal
-	isHeaderRequired  bool
+	context context.Context
+
+	interrupt chan os.Signal //	Shutdown signal for connector
+	done      chan bool      //	Channel to signal ongoing subscriptions
+
+	//	Blockchain network
+	network   string
+	addresses []common.Address
+	client    *ethclient.Client
+
+	//	Network subscription
+	headers           chan *types.Header //	Block header channel
+	logs              chan types.Log     //	Event log channel
+	errchan           chan error         //	Aggregate channel for errors
+	cache             *lru.Cache         //	Store timestamps for block numbers
+	isHeaderRequired  bool               //	Flag to release block headers, if user wants them
 	latestBlockNumber *big.Int
-	logs              chan types.Log
 
-	//	Blockchain network to connect to
-	network string
-
-	//	Number of blocks from latest block number to retrieve historical events
-	numBlocks uint64
+	//	Backfill parameters to retrieve historical events
+	fromBlock uint64 //  Block number to start querying past events
+	numBlocks uint64 //  Number of blocks from latest block number
 }
-
-const allowedBlocksBehind uint64 = 60
 
 //	NewSubscription	connects to given endpoints and subscribes to blockchain.
 func NewSubscription(ctx context.Context, connector *Connector, network string, addresses []common.Address, fromBlock uint64, numBlocks uint64) (*Subscription, error) {
@@ -59,7 +57,6 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		addresses:        addresses,
 		done:             make(chan bool, 1),
 		client:           connector.ChainClients.Ethereum(ctx, network),
-		connector:        connector,
 		context:          ctx,
 		errchan:          make(chan error, 1),
 		fromBlock:        fromBlock,
@@ -149,7 +146,7 @@ func (s *Subscription) getBlockTimeFromChain(blockHash common.Hash) (uint64, err
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeHeaders() {
-	log.Info().Str("network", s.network).Msg("subscribing to headers..")
+	log.Debug().Str("network", s.network).Msg("subscribing to headers..")
 
 	headers := make(chan *types.Header)
 	hs, err := s.client.SubscribeNewHead(s.context, headers)
@@ -160,6 +157,21 @@ func (s *Subscription) subscribeHeaders() {
 	}
 	defer hs.Unsubscribe()
 	defer close(headers)
+
+	//	Start a backfill at launch if requested
+	if s.latestBlockNumber == nil {
+		blockNumber, err := s.client.BlockNumber(s.context)
+		if err != nil {
+			log.Fatal().Err(err).Msg("latest block number not found")
+		}
+
+		if s.fromBlock != 0 {
+			go s.backfill(s.fromBlock, blockNumber)
+		} else if s.numBlocks != 0 {
+			go s.backfill(blockNumber-s.numBlocks, blockNumber)
+		}
+		s.latestBlockNumber = big.NewInt(int64(blockNumber))
+	}
 
 	for {
 		select {
@@ -174,44 +186,29 @@ func (s *Subscription) subscribeHeaders() {
 			return
 
 		case header := <-headers:
-
-			if s.latestBlockNumber == nil {
-				s.latestBlockNumber = header.Number
-				s.backfillOnce.Do(func() {
-					ok := s.backfill()
-					if !ok {
-						log.Fatal().Msg("latest block number not found")
-					}
-				})
-			}
-
-			blockNumber := header.Number.Uint64()
-			diff := blockNumber - s.latestBlockNumber.Uint64()
-			if diff > 0 && diff > allowedBlocksBehind {
-				s.subscribeHeaders()
-			} else if blockNumber > s.latestBlockNumber.Uint64() {
-				log.Debug().Str("block", header.Number.String()).Str("network", s.network).Uint64("ts", header.Time).Msg("header received")
-				s.latestBlockNumber = header.Number
+			//	Start a backfill when there are missing blocks
+			if header.Number.Uint64()-s.latestBlockNumber.Uint64() > 1 {
+				go s.backfill(s.latestBlockNumber.Uint64(), header.Number.Uint64())
 			}
 
 			s.cache.ContainsOrAdd(header.Hash().Hex(), header.Time)
 			if s.isHeaderRequired {
 				s.headers <- header
 			}
+
+			log.Debug().Str("block", header.Number.String()).Str("network", s.network).Uint64("ts", header.Time).Msg("header received")
+			s.latestBlockNumber = header.Number
 		}
 	}
 }
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeLogs() {
-	log.Info().Str("network", s.network).Msg("subscribing to event logs..")
-
-	q := ethereum.FilterQuery{
-		Addresses: s.addresses,
-	}
+	log.Debug().Str("network", s.network).Msg("subscribing to event logs..")
 
 	logch := make(chan types.Log)
-	subs, subErrChan, err := chain.ChunkedSubscribeFilterLogs(s.context, s.client, q, logch, 0)
+	errch := make(chan error)
+	subs, err := chain.ChunkedSubscribeFilterLogs(s.context, s.client, s.addresses, logch, errch, nil)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to subscribe to event logs")
 	}
@@ -230,7 +227,7 @@ func (s *Subscription) subscribeLogs() {
 			s.done <- true
 			return
 
-		case err = <-subErrChan:
+		case err = <-errch:
 			log.Error().Err(err).Msg("event log subscription failed")
 
 			if isRetryable(err) {
@@ -258,34 +255,24 @@ func (s *Subscription) subscribeLogs() {
 	}
 }
 
-//	backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan
-func (s *Subscription) backfill() bool {
-	if s.latestBlockNumber == nil {
-		return false
+//	backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
+func (s *Subscription) backfill(fromBlock uint64, toBlock uint64) {
+	if fromBlock == 0 || toBlock == 0 || fromBlock >= toBlock {
+		return
 	}
 
-	if s.fromBlock == 0 && s.numBlocks == 0 {
-		return true
-	}
-
-	var numBlocks uint64
-	if s.numBlocks == 0 {
-		if s.latestBlockNumber.Uint64() > s.fromBlock {
-			numBlocks = s.latestBlockNumber.Uint64() - s.fromBlock
-		} else {
-			numBlocks = s.latestBlockNumber.Uint64()
+	//	Store failed queries for retry
+	failedQueries := chain.ChunkedFilterLogs(s.context, s.client, s.addresses, fromBlock, toBlock, s.logs, nil)
+	for _, q := range failedQueries {
+		//	Retry failed queries one more time
+		fq := chain.ChunkedFilterLogs(s.context, s.client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), s.logs, nil)
+		for _, q2 := range fq {
+			log.Error().Str("from", fmt.Sprint(q2.FromBlock)).Str("to", fmt.Sprint(q2.ToBlock)).Msg("aborting failed backfill interval.")
 		}
-	} else {
-		numBlocks = s.numBlocks
 	}
-
-	query := ethereum.FilterQuery{Addresses: s.addresses}
-	errchan := make(chan error)
-	chain.ChunkedFilterLogs(s.context, s.client, query, s.latestBlockNumber.Int64(), int64(numBlocks), s.logs, errchan)
-
-	return true
 }
 
+//	isRetryable checks the websocket disconnection error to see if connector can recover.
 func isRetryable(err error) bool {
 	// error 1: Message timed out
 	// error 2: Connection reset by peer
