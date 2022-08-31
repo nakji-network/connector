@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"context"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -24,7 +25,7 @@ func TestGetBlockTime(t *testing.T) {
 	var wantedTS uint64 = 1633956315
 	s.cache.Add("0x534cc509df37f6b5fbf10691db4d70bb6d2199fbaccca5494d7da7fce489c85c", wantedTS)
 	vLog := types.Log{BlockHash: common.HexToHash("0x534cc509df37f6b5fbf10691db4d70bb6d2199fbaccca5494d7da7fce489c85c")}
-	ts, err := s.GetBlockTime(vLog)
+	ts, err := s.GetBlockTime(context.Background(), vLog)
 	if err != nil {
 		t.Error("GetBlockTime failed.", err)
 	}

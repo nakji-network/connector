@@ -28,8 +28,6 @@ type ISubscription interface {
 }
 
 type Subscription struct {
-	context context.Context
-
 	interrupt chan os.Signal //	Shutdown signal for connector
 	done      chan bool      //	Channel to signal ongoing subscriptions
 
@@ -57,7 +55,6 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		addresses:        addresses,
 		done:             make(chan bool, 1),
 		client:           connector.ChainClients.Ethereum(ctx, network),
-		context:          ctx,
 		errchan:          make(chan error, 1),
 		fromBlock:        fromBlock,
 		headers:          make(chan *types.Header),
@@ -81,13 +78,13 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		select {
 		case <-s.interrupt:
 			s.Unsubscribe()
-		case <-s.context.Done():
+		case <-ctx.Done():
 			s.Unsubscribe()
 		}
 	}()
 
-	go s.subscribeHeaders()
-	go s.subscribeLogs()
+	go s.subscribeHeaders(ctx)
+	go s.subscribeLogs(ctx)
 
 	return &s, nil
 }
@@ -101,11 +98,11 @@ func (s *Subscription) Unsubscribe() {
 }
 
 // GetBlockTime retrieves block time from cache.
-func (s *Subscription) GetBlockTime(vLog types.Log) (uint64, error) {
+func (s *Subscription) GetBlockTime(ctx context.Context, vLog types.Log) (uint64, error) {
 	hash := vLog.BlockHash
 	val, hit := s.cache.Get(hash.Hex())
 	if !hit {
-		ts, err := s.getBlockTimeFromChain(hash)
+		ts, err := s.getBlockTimeFromChain(ctx, hash)
 		if err != nil {
 			return 0, err
 		}
@@ -133,8 +130,8 @@ func (s *Subscription) Logs() chan types.Log {
 }
 
 //	getBlockTimeFromChain queries the blockchain and retrieves block time.
-func (s *Subscription) getBlockTimeFromChain(blockHash common.Hash) (uint64, error) {
-	header, err := s.client.HeaderByHash(s.context, blockHash)
+func (s *Subscription) getBlockTimeFromChain(ctx context.Context, blockHash common.Hash) (uint64, error) {
+	header, err := s.client.HeaderByHash(ctx, blockHash)
 	if err != nil {
 		if header != nil {
 			log.Error().Err(err).Uint64("block", header.Number.Uint64()).Msg("failed to retrieve header")
@@ -145,11 +142,11 @@ func (s *Subscription) getBlockTimeFromChain(blockHash common.Hash) (uint64, err
 }
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
-func (s *Subscription) subscribeHeaders() {
+func (s *Subscription) subscribeHeaders(ctx context.Context) {
 	log.Debug().Str("network", s.network).Msg("subscribing to headers..")
 
 	headers := make(chan *types.Header)
-	hs, err := s.client.SubscribeNewHead(s.context, headers)
+	hs, err := s.client.SubscribeNewHead(ctx, headers)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to subscribe to block headers")
 		s.errchan <- err
@@ -160,15 +157,15 @@ func (s *Subscription) subscribeHeaders() {
 
 	//	Start a backfill at launch if requested
 	if s.latestBlockNumber == nil {
-		blockNumber, err := s.client.BlockNumber(s.context)
+		blockNumber, err := s.client.BlockNumber(ctx)
 		if err != nil {
 			log.Fatal().Err(err).Msg("latest block number not found")
 		}
 
 		if s.fromBlock != 0 {
-			go s.backfill(s.fromBlock, blockNumber)
+			go s.backfill(ctx, s.fromBlock, blockNumber)
 		} else if s.numBlocks != 0 {
-			go s.backfill(blockNumber-s.numBlocks, blockNumber)
+			go s.backfill(ctx, blockNumber-s.numBlocks, blockNumber)
 		}
 		s.latestBlockNumber = big.NewInt(int64(blockNumber))
 	}
@@ -179,7 +176,7 @@ func (s *Subscription) subscribeHeaders() {
 			log.Error().Err(err).Msg("header subscription failed")
 
 			if isRetryable(err) {
-				s.subscribeHeaders()
+				s.subscribeHeaders(ctx)
 			} else {
 				s.errchan <- err
 			}
@@ -188,7 +185,7 @@ func (s *Subscription) subscribeHeaders() {
 		case header := <-headers:
 			//	Start a backfill when there are missing blocks
 			if header.Number.Uint64()-s.latestBlockNumber.Uint64() > 1 {
-				go s.backfill(s.latestBlockNumber.Uint64(), header.Number.Uint64())
+				go s.backfill(ctx, s.latestBlockNumber.Uint64(), header.Number.Uint64())
 			}
 
 			s.cache.ContainsOrAdd(header.Hash().Hex(), header.Time)
@@ -203,12 +200,12 @@ func (s *Subscription) subscribeHeaders() {
 }
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
-func (s *Subscription) subscribeLogs() {
+func (s *Subscription) subscribeLogs(ctx context.Context) {
 	log.Debug().Str("network", s.network).Msg("subscribing to event logs..")
 
 	logch := make(chan types.Log)
 	errch := make(chan error)
-	subs, err := chain.ChunkedSubscribeFilterLogs(s.context, s.client, s.addresses, logch, errch, nil)
+	subs, err := chain.ChunkedSubscribeFilterLogs(ctx, s.client, s.addresses, logch, errch, nil)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to subscribe to event logs")
 	}
@@ -231,19 +228,19 @@ func (s *Subscription) subscribeLogs() {
 			log.Error().Err(err).Msg("event log subscription failed")
 
 			if isRetryable(err) {
-				s.subscribeLogs()
+				s.subscribeLogs(ctx)
 			} else {
 				s.errchan <- err
 			}
 			return
 
 		case vLog := <-logch:
-			_, err := s.GetBlockTime(vLog)
+			_, err := s.GetBlockTime(ctx, vLog)
 			for err != nil {
 				log.Debug().Uint64("block", vLog.BlockNumber).Str("network", s.network).Msg("waiting for block timestamp")
 				time.Sleep(tWait)
 				tWait *= 2
-				_, err = s.GetBlockTime(vLog)
+				_, err = s.GetBlockTime(ctx, vLog)
 				if tWait > tMax {
 					log.Warn().Uint64("block", vLog.BlockNumber).Str("network", s.network).Msg("block timestamp not available")
 					break
@@ -256,16 +253,16 @@ func (s *Subscription) subscribeLogs() {
 }
 
 //	backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
-func (s *Subscription) backfill(fromBlock uint64, toBlock uint64) {
+func (s *Subscription) backfill(ctx context.Context, fromBlock uint64, toBlock uint64) {
 	if fromBlock == 0 || toBlock == 0 || fromBlock >= toBlock {
 		return
 	}
 
 	//	Store failed queries for retry
-	failedQueries := chain.ChunkedFilterLogs(s.context, s.client, s.addresses, fromBlock, toBlock, s.logs, nil)
+	failedQueries := chain.ChunkedFilterLogs(ctx, s.client, s.addresses, fromBlock, toBlock, s.logs, nil)
 	for _, q := range failedQueries {
 		//	Retry failed queries one more time
-		fq := chain.ChunkedFilterLogs(s.context, s.client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), s.logs, nil)
+		fq := chain.ChunkedFilterLogs(ctx, s.client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), s.logs, nil)
 		for _, q2 := range fq {
 			log.Error().Str("from", fmt.Sprint(q2.FromBlock)).Str("to", fmt.Sprint(q2.ToBlock)).Msg("aborting failed backfill interval.")
 		}

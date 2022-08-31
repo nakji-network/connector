@@ -7,11 +7,16 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum"
-	ethcommon "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/rs/zerolog/log"
 )
+
+type ETHClient interface {
+	FilterLogs(context.Context, ethereum.FilterQuery) ([]types.Log, error)
+	SubscribeFilterLogs(context.Context, ethereum.FilterQuery, chan<- types.Log) (ethereum.Subscription, error)
+}
 
 // Ethereum returns an ethereum client connected to websockets RPC
 func (c Clients) Ethereum(ctx context.Context, chainOverride ...string) *ethclient.Client {
@@ -48,8 +53,8 @@ func (c Clients) Ethereum(ctx context.Context, chainOverride ...string) *ethclie
 // Default chunksize = 7350 for quiknode.
 func ChunkedSubscribeFilterLogs(
 	ctx context.Context,
-	client *ethclient.Client,
-	addresses []ethcommon.Address,
+	client ETHClient,
+	addresses []common.Address,
 	logChan chan<- types.Log,
 	errChan chan<- error,
 	subs []ethereum.Subscription) (
@@ -95,8 +100,8 @@ func ChunkedSubscribeFilterLogs(
 //	Failed query intervals are fed into another channel to allow the caller to retry later.
 func ChunkedFilterLogs(
 	ctx context.Context,
-	client *ethclient.Client,
-	addresses []ethcommon.Address,
+	client ETHClient,
+	addresses []common.Address,
 	fromBlock uint64,
 	toBlock uint64,
 	logChan chan<- types.Log,
