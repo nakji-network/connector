@@ -56,15 +56,6 @@ func TestChunkedSubscribeFilterLogs(t *testing.T) {
 	}
 }
 
-// func ChunkedSubscribeFilterLogs(
-// 	ctx context.Context,
-// 	client ETHClient,
-// 	addresses []common.Address,
-// 	logChan chan<- types.Log,
-// 	errChan chan<- error,
-// 	subs []ethereum.Subscription) (
-// 	[]ethereum.Subscription, error) {
-
 func TestChunkedFilterLogs(t *testing.T) {
 	mockETHClient := MockETHClient{}
 	addr := make([]common.Address, 8000)
@@ -84,12 +75,3 @@ func TestChunkedFilterLogs(t *testing.T) {
 
 	ChunkedFilterLogs(context.Background(), mockETHClient, addr, fromBlock, toBlock, logch, nil)
 }
-
-// func ChunkedFilterLogs(
-// 	ctx context.Context,
-// 	client ETHClient,
-// 	addresses []common.Address,
-// 	fromBlock uint64,
-// 	toBlock uint64,
-// 	logChan chan<- types.Log,
-// 	failedQueries []ethereum.FilterQuery) []ethereum.FilterQuery {
