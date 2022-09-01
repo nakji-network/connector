@@ -176,7 +176,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 			log.Error().Err(err).Msg("header subscription failed")
 
 			if isRetryable(err) {
-				s.subscribeHeaders(ctx)
+				go s.subscribeHeaders(ctx)
 			} else {
 				s.errchan <- err
 			}
@@ -228,7 +228,7 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			log.Error().Err(err).Msg("event log subscription failed")
 
 			if isRetryable(err) {
-				s.subscribeLogs(ctx)
+				go s.subscribeLogs(ctx)
 			} else {
 				s.errchan <- err
 			}
