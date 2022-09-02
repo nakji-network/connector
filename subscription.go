@@ -20,7 +20,7 @@ import (
 
 type ISubscription interface {
 	Done() <-chan bool
-	GetBlockTime(types.Log) (uint64, error)
+	GetBlockTime(context.Context, types.Log) (uint64, error)
 	Err() <-chan error
 	Headers() chan *types.Header
 	Logs() chan types.Log
