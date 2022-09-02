@@ -7,7 +7,6 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
-	time "time"
 
 	kafka "github.com/confluentinc/confluent-kafka-go/kafka"
 	gomock "github.com/golang/mock/gomock"
@@ -147,17 +146,17 @@ func (mr *MockProducerInterfaceMockRecorder) MakeQueueTransactionSink() *gomock.
 }
 
 // ProduceMsg mocks base method.
-func (m *MockProducerInterface) ProduceMsg(arg0 kafkautils.Topic, arg1 protoreflect.ProtoMessage, arg2 []byte, arg3 time.Time, arg4 chan kafka.Event) error {
+func (m *MockProducerInterface) ProduceMsg(arg0 kafkautils.Topic, arg1 protoreflect.ProtoMessage, arg2 []byte, arg3 chan kafka.Event) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ProduceMsg", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "ProduceMsg", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ProduceMsg indicates an expected call of ProduceMsg.
-func (mr *MockProducerInterfaceMockRecorder) ProduceMsg(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockProducerInterfaceMockRecorder) ProduceMsg(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProduceMsg", reflect.TypeOf((*MockProducerInterface)(nil).ProduceMsg), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProduceMsg", reflect.TypeOf((*MockProducerInterface)(nil).ProduceMsg), arg0, arg1, arg2, arg3)
 }
 
 // WriteAndCommit mocks base method.

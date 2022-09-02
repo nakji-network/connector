@@ -22,7 +22,7 @@ type ProducerInterface interface {
 	AbortTransaction(context.Context) error
 	EnableTransactions() error
 	ListenDeliveryChan(delivery chan kafka.Event)
-	ProduceMsg(topic Topic, msg proto.Message, key []byte, timestamp time.Time, deliveryChan chan kafka.Event) error
+	ProduceMsg(topic Topic, msg proto.Message, key []byte, deliveryChan chan kafka.Event) error
 	WriteAndCommitSink(<-chan *Message)
 	WriteAndCommit(Topic, []byte, proto.Message) error
 	MakeQueueTransactionSink() chan *Message
@@ -390,7 +390,7 @@ func (p *Producer) MakeQueueTransactionSink() chan *Message {
 
 //	ProduceMsg sends single protobuf message to a Kafka topic. It can optionally include a key and timestamp.
 //	An event channel can be provided for Kafka event response.
-func (p *Producer) ProduceMsg(topic Topic, msg proto.Message, key []byte, timestamp time.Time, delivery chan kafka.Event) error {
+func (p *Producer) ProduceMsg(topic Topic, msg proto.Message, key []byte, delivery chan kafka.Event) error {
 	if p.closed {
 		return fmt.Errorf("cannot produce message, producer is already closed")
 	}
@@ -411,11 +411,6 @@ func (p *Producer) ProduceMsg(topic Topic, msg proto.Message, key []byte, timest
 
 	if key != nil {
 		kafkaMsg.Key = key
-	}
-
-	//	You can use time.Time{} to bypass setting a timestamp.
-	if !timestamp.IsZero() {
-		kafkaMsg.Timestamp = timestamp
 	}
 
 	return p.Produce(kafkaMsg, delivery)
