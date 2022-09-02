@@ -102,7 +102,7 @@ func ChunkedFilterLogs(
 	ctx context.Context,
 	client ETHClient,
 	addresses []common.Address,
-	fromBlock uint64,
+	fromBlock,
 	toBlock uint64,
 	logChan chan<- types.Log,
 	failedQueries []ethereum.FilterQuery) []ethereum.FilterQuery {
