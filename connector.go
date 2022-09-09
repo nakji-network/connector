@@ -160,7 +160,7 @@ func (c *Connector) SubscribeExample() error {
 func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message) error {
 	topic := c.generateTopicFromProto(msg)
 	key := kafkautils.NewKey(namespace, subject)
-	return c.WriteKafkaMessages(topic, key.Bytes(), msg)
+	return c.ProduceMsg(topic.String(), msg, key.Bytes(), nil)
 }
 
 // ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
