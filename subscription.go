@@ -19,6 +19,7 @@ import (
 )
 
 type ISubscription interface {
+	Client() *ethclient.Client
 	Done() <-chan bool
 	GetBlockTime(context.Context, types.Log) (uint64, error)
 	Err() <-chan error
@@ -110,6 +111,10 @@ func (s *Subscription) GetBlockTime(ctx context.Context, vLog types.Log) (uint64
 		return ts, nil
 	}
 	return val.(uint64), nil
+}
+
+func (s *Subscription) Client() *ethclient.Client {
+	return s.client
 }
 
 func (s *Subscription) Done() <-chan bool {
