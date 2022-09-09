@@ -337,7 +337,7 @@ func (c *Connector) initProduceChannel(input <-chan protoreflect.ProtoMessage) {
 
 			hasMessage = true
 			topic := c.generateTopicFromProto(msg)
-			c.ProducerInterface.ProduceMsg(topic, msg, nil, nil)
+			c.ProducerInterface.ProduceMsg(topic.String(), msg, nil, nil)
 		}
 	}
 }

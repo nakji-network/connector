@@ -17,12 +17,11 @@ import (
 type ProducerInterface interface {
 	InitTransactions(context.Context) error
 	BeginTransaction() error
-	WriteKafkaMessages(Topic, []byte, proto.Message) error
 	CommitTransaction(context.Context) error
 	AbortTransaction(context.Context) error
 	EnableTransactions() error
 	ListenDeliveryChan(delivery chan kafka.Event)
-	ProduceMsg(topic Topic, msg proto.Message, key []byte, deliveryChan chan kafka.Event) error
+	ProduceMsg(topic string, msg proto.Message, key []byte, deliveryChan chan kafka.Event) error
 	WriteAndCommitSink(<-chan *Message)
 	WriteAndCommit(Topic, []byte, proto.Message) error
 	MakeQueueTransactionSink() chan *Message
@@ -251,32 +250,9 @@ func (p *Producer) SendOffsetsToTransaction(position kafka.TopicPartitions, c *C
 	}
 }
 
-// WriteKafkaMessages writes plain kafka messages
-func (p *Producer) WriteKafkaMessages(topic Topic, key []byte, value proto.Message) error {
-	if p.closed {
-		return fmt.Errorf("cannot write kafka message. Producer is already closed")
-	}
-
-	pbData, err := proto.Marshal(value)
-	if err != nil {
-		return err
-	}
-
-	monitor.SetMetricsForKafkaLastWriteTime()
-
-	topicString := topic.String()
-
-	return p.Produce(&kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &topicString, Partition: kafka.PartitionAny},
-		Value:          pbData,
-		Key:            key,
-		//Timestamp:      time.Time,
-	}, nil)
-}
-
 // WriteAndCommit writes for transactional producers, committing transaction after each write
 func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message) error {
-	err := p.WriteKafkaMessages(topic, key, value)
+	err := p.ProduceMsg(topic.String(), value, key, nil)
 	if err != nil {
 		return err
 	}
@@ -362,7 +338,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 				continue
 			}
 
-			err := p.WriteKafkaMessages(msg.Topic, msg.Key.Bytes(), msg.ProtoMsg)
+			err := p.ProduceMsg(msg.Topic.String(), msg.ProtoMsg, msg.Key.Bytes(), nil)
 			if err != nil {
 				log.Error().Err(err).
 					Str("topic", msg.Topic.String()).
@@ -390,7 +366,7 @@ func (p *Producer) MakeQueueTransactionSink() chan *Message {
 
 //	ProduceMsg sends single protobuf message to a Kafka topic. It can optionally include a key and timestamp.
 //	An event channel can be provided for Kafka event response.
-func (p *Producer) ProduceMsg(topic Topic, msg proto.Message, key []byte, delivery chan kafka.Event) error {
+func (p *Producer) ProduceMsg(topic string, msg proto.Message, key []byte, delivery chan kafka.Event) error {
 	if p.closed {
 		return fmt.Errorf("cannot produce message, producer is already closed")
 	}
@@ -402,10 +378,8 @@ func (p *Producer) ProduceMsg(topic Topic, msg proto.Message, key []byte, delive
 
 	monitor.SetMetricsForKafkaLastWriteTime()
 
-	topicString := topic.String()
-
 	kafkaMsg := &kafka.Message{
-		TopicPartition: kafka.TopicPartition{Topic: &topicString, Partition: kafka.PartitionAny},
+		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
 		Value:          pbData,
 	}
 

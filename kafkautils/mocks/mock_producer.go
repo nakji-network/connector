@@ -146,7 +146,7 @@ func (mr *MockProducerInterfaceMockRecorder) MakeQueueTransactionSink() *gomock.
 }
 
 // ProduceMsg mocks base method.
-func (m *MockProducerInterface) ProduceMsg(arg0 kafkautils.Topic, arg1 protoreflect.ProtoMessage, arg2 []byte, arg3 chan kafka.Event) error {
+func (m *MockProducerInterface) ProduceMsg(arg0 string, arg1 protoreflect.ProtoMessage, arg2 []byte, arg3 chan kafka.Event) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ProduceMsg", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(error)
@@ -183,18 +183,4 @@ func (m *MockProducerInterface) WriteAndCommitSink(arg0 <-chan *kafkautils.Messa
 func (mr *MockProducerInterfaceMockRecorder) WriteAndCommitSink(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteAndCommitSink", reflect.TypeOf((*MockProducerInterface)(nil).WriteAndCommitSink), arg0)
-}
-
-// WriteKafkaMessages mocks base method.
-func (m *MockProducerInterface) WriteKafkaMessages(arg0 kafkautils.Topic, arg1 []byte, arg2 protoreflect.ProtoMessage) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WriteKafkaMessages", arg0, arg1, arg2)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// WriteKafkaMessages indicates an expected call of WriteKafkaMessages.
-func (mr *MockProducerInterfaceMockRecorder) WriteKafkaMessages(arg0, arg1, arg2 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteKafkaMessages", reflect.TypeOf((*MockProducerInterface)(nil).WriteKafkaMessages), arg0, arg1, arg2)
 }
