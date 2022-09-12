@@ -9,8 +9,8 @@ require (
 	github.com/confluentinc/confluent-kafka-go v1.8.2
 	github.com/ethereum/go-ethereum v1.10.15
 	github.com/gagliardetto/binary v0.6.1
-	github.com/gagliardetto/metaplex-go v0.2.1
-	github.com/gagliardetto/solana-go v1.4.0
+	github.com/gagliardetto/metaplex-go v0.2.0
+	github.com/gagliardetto/solana-go v1.1.0
 	github.com/golang/mock v1.6.0
 	github.com/golang/protobuf v1.5.2
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d

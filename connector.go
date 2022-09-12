@@ -41,8 +41,10 @@ type Connector struct {
 	EventSink chan<- protoreflect.ProtoMessage
 }
 
+type Option func(*Connector)
+
 // NewConnector returns a base connector implementation that other connectors can embed to add on to.
-func NewConnector() (*Connector, error) {
+func NewConnector(options ...Option) (*Connector, error) {
 	conf := config.GetConfig()
 	conf.SetDefault("kafka.env", "dev")
 	conf.SetDefault("protoregistry.host", "localhost:9191")
@@ -66,6 +68,8 @@ func NewConnector() (*Connector, error) {
 		ProtoRegistryCli: prc,
 	}
 
+	parseOptions(c, options...)
+
 	c.Config = conf.Sub(c.id())
 	if c.Config == nil {
 		c.Config = viper.New()
@@ -88,6 +92,18 @@ func NewConnector() (*Connector, error) {
 	monitor.StartMonitor(c.id())
 
 	return c, nil
+}
+
+func parseOptions(c *Connector, options ...Option) {
+	for _, option := range options {
+		option(c)
+	}
+}
+
+func WithManifest(m *manifest) Option {
+	return func(c *Connector) {
+		c.manifest = m
+	}
 }
 
 // id() returns a unique id for this connector based on the manifest.
