@@ -4,6 +4,7 @@ package connector
 import (
 	"io/ioutil"
 
+	"github.com/Masterminds/semver"
 	"github.com/rs/zerolog/log"
 	"gopkg.in/yaml.v3"
 )
@@ -21,7 +22,8 @@ func LoadManifest() *manifest {
 
 	yfile, err := ioutil.ReadFile("manifest.yaml")
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to open file manifest.yaml.")
+		log.Warn().Err(err).Msg("Failed to open file manifest.yaml.")
+		return nil
 	}
 
 	m := new(manifest)
@@ -42,4 +44,17 @@ func LoadManifest() *manifest {
 		Msg("Manifest loaded")
 
 	return m
+}
+
+func NewManifest(name string, author string, ver string) *manifest {
+	nv, err := semver.NewVersion(ver)
+	if err != nil {
+		log.Fatal().Err(err).Msg("invalid version")
+	}
+
+	return &manifest{
+		Name:    name,
+		Author:  author,
+		Version: version{nv},
+	}
 }
