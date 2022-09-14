@@ -22,7 +22,7 @@ func LoadManifest() *manifest {
 
 	yfile, err := ioutil.ReadFile("manifest.yaml")
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to open file manifest.yaml.")
+		log.Warn().Err(err).Msg("Failed to open file manifest.yaml.")
 		return nil
 	}
 
@@ -46,7 +46,7 @@ func LoadManifest() *manifest {
 	return m
 }
 
-func CreateManifest(name string, author string, ver string) *manifest {
+func NewManifest(name string, author string, ver string) *manifest {
 	nv, err := semver.NewVersion(ver)
 	if err != nil {
 		log.Fatal().Err(err).Msg("invalid version")

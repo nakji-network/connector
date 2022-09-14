@@ -70,6 +70,10 @@ func NewConnector(options ...Option) (*Connector, error) {
 
 	parseOptions(c, options...)
 
+	if c.manifest == nil {
+		log.Fatal().Msg("missing manifest.yaml")
+	}
+
 	c.Config = conf.Sub(c.id())
 	if c.Config == nil {
 		c.Config = viper.New()
