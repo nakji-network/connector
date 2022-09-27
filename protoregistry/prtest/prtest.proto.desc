@@ -1,0 +1,61 @@
+
+ÿ
+google/protobuf/timestamp.protogoogle.protobuf";
+	Timestamp
+seconds (Rseconds
+nanos (RnanosB…
+com.google.protobufBTimestampProtoPZ2google.golang.org/protobuf/types/known/timestamppbø¢GPBªGoogle.Protobuf.WellKnownTypesbproto3
+¯
+
+prtest.protoprtestgoogle/protobuf/timestamp.proto"Â
+Mint*
+ts (2.google.protobuf.TimestampRts
+block (Rblock
+idx (Ridx
+tx (Rtx
+minter (Rminter
+
+mintAmount (R
+mintAmount
+
+mintTokens (R
+mintTokens"Ð
+Redeem*
+ts (2.google.protobuf.TimestampRts
+block (Rblock
+idx (Ridx
+tx (Rtx
+redeemer (Rredeemer"
+redeemAmount (RredeemAmount"
+redeemTokens (RredeemTokens"ø
+Borrow*
+ts (2.google.protobuf.TimestampRts
+block (Rblock
+idx (Ridx
+tx (Rtx
+borrower (Rborrower"
+borrowAmount (RborrowAmount&
+accountBorrows (RaccountBorrows"
+totalBorrows (RtotalBorrows"‘
+RepayBorrow*
+ts (2.google.protobuf.TimestampRts
+block (Rblock
+idx (Ridx
+tx (Rtx
+payer (Rpayer
+borrower (Rborrower 
+repayAmount (RrepayAmount&
+accountBorrows (RaccountBorrows"
+totalBorrows	 (RtotalBorrows"¡
+LiquidateBorrow*
+ts (2.google.protobuf.TimestampRts
+block (Rblock
+idx (Ridx
+tx (Rtx
+
+liquidator (R
+liquidator
+borrower (Rborrower 
+repayAmount (RrepayAmount*
+cTokenCollateral (RcTokenCollateral 
+seizeTokens	 (RseizeTokensB#Z!blep.ai/data/protoregistry/prtestbproto3
