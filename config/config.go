@@ -19,6 +19,7 @@ type IConfig interface {
 	SetDefault(string, interface{})
 	GetString(string) string
 	GetInt64(string) int64
+	GetUint64(string) uint64
 }
 
 var ErrInvalidConfig = errors.New("invalid config")

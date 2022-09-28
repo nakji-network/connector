@@ -14,10 +14,10 @@ import (
 type Env string
 
 const (
-	Prod    Env = "prod"
-	Staging     = "staging"
-	Dev         = "dev"
-	Test        = "test"
+	EnvProd    Env = "prod"
+	EnvStaging Env = "staging"
+	EnvDev     Env = "dev"
+	EnvTest    Env = "test"
 )
 
 const (
@@ -26,15 +26,6 @@ const (
 	TopicAggregateSeparator string = "-"
 	TopicWildcardSuffix     string = "-*"
 	TopicNumSegments        int    = 4
-)
-
-type MsgType string
-
-const (
-	Fct MsgType = "fct"
-	Cdc         = "cdc"
-	Cmd         = "cmd"
-	Sys         = "sys"
 )
 
 type Topic struct {

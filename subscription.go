@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"os"
 	"os/signal"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nakji-network/connector/chain"
+	"github.com/nakji-network/connector/kafkautils"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -19,18 +19,21 @@ import (
 )
 
 type ISubscription interface {
+	AddAddress(context.Context, common.Address, kafkautils.MsgType)
 	Client() *ethclient.Client
 	Done() <-chan bool
-	GetBlockTime(context.Context, types.Log) (uint64, error)
 	Err() <-chan error
+	GetBlockTime(context.Context, types.Log) (uint64, error)
 	Headers() chan *types.Header
 	Logs() chan types.Log
+	Subscribe(context.Context)
 	Unsubscribe()
 }
 
 type Subscription struct {
-	interrupt chan os.Signal //	Shutdown signal for connector
-	done      chan bool      //	Channel to signal ongoing subscriptions
+	interrupt   chan os.Signal //	Shutdown signal for connector
+	done        chan bool      //	Channel to signal ongoing subscriptions
+	resubscribe chan bool      //	Channel to signal for resubscribing to logs
 
 	//	Blockchain network
 	network   string
@@ -44,26 +47,21 @@ type Subscription struct {
 	cache             *lru.Cache         //	Store timestamps for block numbers
 	isHeaderRequired  bool               //	Flag to release block headers, if user wants them
 	latestBlockNumber *big.Int
-
-	//	Backfill parameters to retrieve historical events
-	fromBlock uint64 //  Block number to start querying past events
-	numBlocks uint64 //  Number of blocks from latest block number
 }
 
 //	NewSubscription	connects to given endpoints and subscribes to blockchain.
-func NewSubscription(ctx context.Context, connector *Connector, network string, addresses []common.Address, fromBlock uint64, numBlocks uint64) (*Subscription, error) {
+func NewSubscription(ctx context.Context, connector *Connector, network string, addresses []common.Address) (*Subscription, error) {
 	s := Subscription{
 		addresses:        addresses,
 		done:             make(chan bool, 1),
+		resubscribe:      make(chan bool, 1),
 		client:           connector.ChainClients.Ethereum(ctx, network),
 		errchan:          make(chan error, 1),
-		fromBlock:        fromBlock,
 		headers:          make(chan *types.Header),
 		interrupt:        make(chan os.Signal, 1),
 		isHeaderRequired: false,
 		logs:             make(chan types.Log),
 		network:          network,
-		numBlocks:        numBlocks,
 	}
 
 	//	Create cache for storing block timestamp
@@ -84,18 +82,31 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 		}
 	}()
 
-	go s.subscribeHeaders(ctx)
-	go s.subscribeLogs(ctx)
-
 	return &s, nil
 }
 
-//	Unsubscribe closes subscriptions and open channels.
-func (s *Subscription) Unsubscribe() {
-	log.Info().Str("network", s.network).Msg("shutting down subscription")
-	s.done <- true
-	close(s.headers)
-	close(s.logs)
+func (s *Subscription) Subscribe(ctx context.Context) {
+	go s.subscribeHeaders(ctx)
+	go s.subscribeLogs(ctx)
+}
+
+func (s *Subscription) AddAddress(ctx context.Context, address common.Address, msgType kafkautils.MsgType) {
+	s.addresses = append(s.addresses, address)
+	if msgType == kafkautils.MsgTypeFct {
+		s.resubscribe <- true
+	}
+}
+
+func (s *Subscription) Client() *ethclient.Client {
+	return s.client
+}
+
+func (s *Subscription) Done() <-chan bool {
+	return s.done
+}
+
+func (s *Subscription) Err() <-chan error {
+	return s.errchan
 }
 
 // GetBlockTime retrieves block time from cache.
@@ -113,18 +124,6 @@ func (s *Subscription) GetBlockTime(ctx context.Context, vLog types.Log) (uint64
 	return val.(uint64), nil
 }
 
-func (s *Subscription) Client() *ethclient.Client {
-	return s.client
-}
-
-func (s *Subscription) Done() <-chan bool {
-	return s.done
-}
-
-func (s *Subscription) Err() <-chan error {
-	return s.errchan
-}
-
 func (s *Subscription) Headers() chan *types.Header {
 	s.isHeaderRequired = true
 	return s.headers
@@ -132,6 +131,14 @@ func (s *Subscription) Headers() chan *types.Header {
 
 func (s *Subscription) Logs() chan types.Log {
 	return s.logs
+}
+
+//	Unsubscribe closes subscriptions and open channels.
+func (s *Subscription) Unsubscribe() {
+	log.Info().Str("network", s.network).Msg("shutting down subscription")
+	s.done <- true
+	close(s.headers)
+	close(s.logs)
 }
 
 //	getBlockTimeFromChain queries the blockchain and retrieves block time.
@@ -160,23 +167,12 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 	defer hs.Unsubscribe()
 	defer close(headers)
 
-	//	Start a backfill at launch if requested
-	if s.latestBlockNumber == nil {
-		blockNumber, err := s.client.BlockNumber(ctx)
-		if err != nil {
-			log.Fatal().Err(err).Msg("latest block number not found")
-		}
-
-		if s.fromBlock != 0 {
-			go s.backfill(ctx, s.fromBlock, blockNumber)
-		} else if s.numBlocks != 0 {
-			go s.backfill(ctx, blockNumber-s.numBlocks, blockNumber)
-		}
-		s.latestBlockNumber = big.NewInt(int64(blockNumber))
-	}
-
 	for {
 		select {
+		case <-s.Done():
+			s.done <- true
+			return
+
 		case err := <-hs.Err():
 			log.Error().Err(err).Msg("header subscription failed")
 
@@ -189,8 +185,8 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 
 		case header := <-headers:
 			//	Start a backfill when there are missing blocks
-			if header.Number.Uint64()-s.latestBlockNumber.Uint64() > 1 {
-				go s.backfill(ctx, s.latestBlockNumber.Uint64(), header.Number.Uint64())
+			if s.latestBlockNumber != nil && header.Number.Uint64()-s.latestBlockNumber.Uint64() > 1 {
+				go chain.Backfill(ctx, s.client, s.addresses, s.logs, s.latestBlockNumber.Uint64(), header.Number.Uint64())
 			}
 
 			s.cache.ContainsOrAdd(header.Hash().Hex(), header.Time)
@@ -225,6 +221,10 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 
 	for {
 		select {
+		case <-s.resubscribe:
+			go s.subscribeLogs(ctx)
+			return
+
 		case <-s.Done():
 			s.done <- true
 			return
@@ -253,23 +253,6 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			}
 			tWait = tMin
 			s.logs <- vLog
-		}
-	}
-}
-
-//	backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
-func (s *Subscription) backfill(ctx context.Context, fromBlock uint64, toBlock uint64) {
-	if fromBlock == 0 || toBlock == 0 || fromBlock >= toBlock {
-		return
-	}
-
-	//	Store failed queries for retry
-	failedQueries := chain.ChunkedFilterLogs(ctx, s.client, s.addresses, fromBlock, toBlock, s.logs, nil)
-	for _, q := range failedQueries {
-		//	Retry failed queries one more time
-		fq := chain.ChunkedFilterLogs(ctx, s.client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), s.logs, nil)
-		for _, q2 := range fq {
-			log.Error().Str("from", fmt.Sprint(q2.FromBlock)).Str("to", fmt.Sprint(q2.ToBlock)).Msg("aborting failed backfill interval.")
 		}
 	}
 }

@@ -17,7 +17,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type Connector struct {
@@ -38,7 +37,7 @@ type Connector struct {
 
 	//	EventSink can be used to push incoming on-chain events to Kafka.
 	// 	All kafka Produce logic will be handled under the hood.
-	EventSink chan<- protoreflect.ProtoMessage
+	EventSink chan<- *kafkautils.Message
 }
 
 type Option func(*Connector)
@@ -61,7 +60,7 @@ func NewConnector(options ...Option) (*Connector, error) {
 	c := &Connector{
 		manifest:         LoadManifest(),
 		env:              kafkautils.Env(conf.GetString("kafka.env")),
-		MsgType:          kafkautils.Fct,
+		MsgType:          kafkautils.MsgTypeFct,
 		kafkaUrl:         conf.GetString("kafka.url"),
 		ChainClients:     chain.NewClients(rpcMap),
 		Health:           healthcheck.NewHandler(),
@@ -84,8 +83,8 @@ func NewConnector(options ...Option) (*Connector, error) {
 		Msg("Starting connector")
 
 	//	Create kafka Produce channel and provide an outlet to connector object
-	eventSink := make(chan protoreflect.ProtoMessage)
-	go c.initProduceChannel(eventSink)
+	eventSink := make(chan *kafkautils.Message)
+	go c.initProduceChannel(context.Background(), eventSink)
 	c.EventSink = eventSink
 
 	// For Liveness and Readiness Probe checks
@@ -177,14 +176,14 @@ func (c *Connector) SubscribeExample() error {
 }
 
 // ProduceMessage sends protobuf to message queue with a Topic and Key.
-func (c *Connector) ProduceMessage(namespace, subject string, msg proto.Message) error {
-	topic := c.generateTopicFromProto(msg)
+func (c *Connector) ProduceMessage(namespace, subject string, msgType kafkautils.MsgType, msg proto.Message) error {
+	topic := c.generateTopicFromProto(msgType, msg)
 	key := kafkautils.NewKey(namespace, subject)
 	return c.ProduceMsg(topic.String(), msg, key.Bytes(), nil)
 }
 
 // ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
-func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto.Message) error {
+func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msgType kafkautils.MsgType, msg proto.Message) error {
 	if !c.producerStarted {
 		err := c.startProducer()
 		if err != nil {
@@ -198,7 +197,7 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msg proto
 		log.Fatal().Err(err).Msg("")
 	}
 
-	err = c.ProduceMessage(namespace, subject, msg)
+	err = c.ProduceMessage(namespace, subject, msgType, msg)
 	if err != nil {
 		return err
 	}
@@ -261,10 +260,10 @@ func (c *Connector) startConsumer(overrideOpts ...kafka.ConfigMap) error {
 
 // generateTopicFromProto generates message queue topic names based on the protobuf message.
 // Event names should be prefixed with contract_ or category_ when appropriate.
-func (c *Connector) generateTopicFromProto(msg proto.Message) kafkautils.Topic {
+func (c *Connector) generateTopicFromProto(msgType kafkautils.MsgType, msg proto.Message) kafkautils.Topic {
 	return kafkautils.NewTopic(
 		c.env,
-		c.MsgType,
+		msgType,
 		c.manifest.Author,
 		c.manifest.Name,
 		c.manifest.Version.Version,
@@ -273,13 +272,13 @@ func (c *Connector) generateTopicFromProto(msg proto.Message) kafkautils.Topic {
 }
 
 // RegisterProtos generates kafka topic and protobuf type mappings from proto.Message and registers them dynamically.
-func (c *Connector) RegisterProtos(protos ...proto.Message) {
-	if c.env == kafkautils.Dev {
+func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.Message) {
+	if c.env == kafkautils.EnvDev {
 		log.Debug().Msg("protoregistry is disabled in dev mode, set kafka.env to other values (e.g., test, staging) to enable it")
 		return
 	}
 
-	tt := c.buildTopicTypes(protos...)
+	tt := c.buildTopicTypes(msgType, protos...)
 
 	err := c.ProtoRegistryCli.RegisterDynamicTopics(tt, c.MsgType)
 	if err != nil {
@@ -287,11 +286,11 @@ func (c *Connector) RegisterProtos(protos ...proto.Message) {
 	}
 }
 
-func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.TopicTypes {
+func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.Message) protoregistry.TopicTypes {
 	tt := make(map[string]proto.Message)
 
 	for _, proto := range protos {
-		tt[c.generateTopicFromProto(proto).Schema()] = proto
+		tt[c.generateTopicFromProto(msgType, proto).Schema()] = proto
 	}
 
 	return tt
@@ -299,7 +298,7 @@ func (c *Connector) buildTopicTypes(protos ...proto.Message) protoregistry.Topic
 
 //	InitProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
 //	It wraps messages in Kafka Transactions to ensure Exactly Once Semantics.
-func (c *Connector) initProduceChannel(input <-chan protoreflect.ProtoMessage) {
+func (c *Connector) initProduceChannel(ctx context.Context, input <-chan *kafkautils.Message) {
 
 	c.startProducer()
 	ticker := time.NewTicker(time.Second)
@@ -356,8 +355,10 @@ func (c *Connector) initProduceChannel(input <-chan protoreflect.ProtoMessage) {
 			}
 
 			hasMessage = true
-			topic := c.generateTopicFromProto(msg)
-			c.ProducerInterface.ProduceMsg(topic.String(), msg, nil, nil)
+			if msg.TopicStr == "" {
+				msg.TopicStr = c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
+			}
+			c.ProducerInterface.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil)
 		}
 	}
 }
