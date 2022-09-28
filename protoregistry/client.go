@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -21,8 +22,8 @@ import (
 )
 
 var (
-	errProtoFound    = errors.New("found the proto file")
-	errProtoNotFound = errors.New("failed to the proto file")
+	errProtoFound    = errors.New("proto file found")
+	errProtoNotFound = errors.New("proto file not found")
 )
 
 type Client struct {
@@ -177,7 +178,8 @@ func getProtoFilePath(baseDir string, tpm *TopicProtoMsg) (string, error) {
 	p := ""
 
 	err := filepath.WalkDir(baseDir, func(path string, info os.DirEntry, err error) error {
-		if err != nil {
+		// Skip permission denied error
+		if err != nil && !strings.Contains(err.Error(), fs.ErrPermission.Error()) {
 			log.Error().Err(err).Msg("WalkDirFunc error")
 			return err
 		}
