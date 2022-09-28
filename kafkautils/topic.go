@@ -14,10 +14,10 @@ import (
 type Env string
 
 const (
-	Prod    Env = "prod"
-	Staging     = "staging"
-	Dev         = "dev"
-	Test        = "test"
+	EnvProd    Env = "prod"
+	EnvStaging Env = "staging"
+	EnvDev     Env = "dev"
+	EnvTest    Env = "test"
 )
 
 const (
@@ -28,23 +28,18 @@ const (
 	TopicNumSegments        int    = 4
 )
 
-type MsgType string
-
-const (
-	Fct MsgType = "fct"
-	Cdc         = "cdc"
-	Cmd         = "cmd"
-	Sys         = "sys"
-)
-
-type Topic struct {
+type TopicPrefix struct {
 	Env           Env
 	MsgType       MsgType
 	Author        string
 	ConnectorName string
 	Version       *semver.Version
-	EventName     string
-	pb            proto.Message // create an empty protobuf struct instance, filled upon UnmarshalProto
+}
+
+type Topic struct {
+	*TopicPrefix
+	EventName string
+	pb        proto.Message // create an empty protobuf struct instance, filled upon UnmarshalProto
 }
 
 // String generates the topic string
@@ -62,15 +57,27 @@ func (t Topic) Schema() string {
 	}, TopicContextSeparator)
 }
 
+func NewTopicPrefix(env Env, msgType MsgType, author, name string, version *semver.Version) *TopicPrefix {
+	return &TopicPrefix{
+		Env:           env,
+		MsgType:       msgType,
+		Author:        author,
+		ConnectorName: name,
+		Version:       version,
+	}
+}
+
 func NewTopic(en Env, ty MsgType, author, connectorName string, version *semver.Version, msg proto.Message) Topic {
 	return Topic{
-		Env:           en,
-		MsgType:       ty,
-		Author:        author,
-		ConnectorName: connectorName,
-		Version:       version,
-		EventName:     strings.ReplaceAll(string(msg.ProtoReflect().Descriptor().FullName()), ".", "_"),
-		pb:            msg,
+		TopicPrefix: &TopicPrefix{
+			Env:           en,
+			MsgType:       ty,
+			Author:        author,
+			ConnectorName: connectorName,
+			Version:       version,
+		},
+		EventName: strings.ReplaceAll(string(msg.ProtoReflect().Descriptor().FullName()), ".", "_"),
+		pb:        msg,
 	}
 }
 
@@ -96,13 +103,15 @@ func ParseTopic(s string, e ...string) (Topic, error) {
 	}
 
 	res := Topic{
-		Env:           Env(p[0]),
-		MsgType:       MsgType(p[1]),
-		Author:        p[2],
-		ConnectorName: p[3],
-		Version:       version,
-		EventName:     p[5],
-		pb:            proto.Clone(pbType),
+		TopicPrefix: &TopicPrefix{
+			Env:           Env(p[0]),
+			MsgType:       MsgType(p[1]),
+			Author:        p[2],
+			ConnectorName: p[3],
+			Version:       version,
+		},
+		EventName: p[5],
+		pb:        proto.Clone(pbType),
 	}
 
 	// override env

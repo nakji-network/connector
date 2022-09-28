@@ -10,9 +10,21 @@ import (
 type Message struct {
 	*kafka.Message
 	Topic    Topic
+	TopicStr string
 	Key      Key
+	MsgType  MsgType
 	ProtoMsg proto.Message
 }
+
+type MsgType string
+
+const (
+	MsgTypeFct MsgType = "fct"
+	MsgTypeBf  MsgType = "bf" //	backfill
+	MsgTypeCdc MsgType = "cdc"
+	MsgTypeCmd MsgType = "cmd"
+	MsgTypeSys MsgType = "sys"
+)
 
 // FieldNames gets the field names from the ProtoMsg
 func (m *Message) FieldNames() []string {

@@ -146,3 +146,35 @@ func ChunkedFilterLogs(
 	}
 	return failedQueries
 }
+
+//	backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
+func Backfill(
+	ctx context.Context,
+	client *ethclient.Client,
+	addresses []common.Address,
+	logs chan types.Log,
+	fromBlock uint64,
+	toBlock uint64) {
+
+	if toBlock == 0 {
+		var err error
+		toBlock, err = client.BlockNumber(ctx)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to get block number")
+		}
+	}
+
+	if fromBlock >= toBlock {
+		return
+	}
+
+	//	Store failed queries for retry
+	failedQueries := ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, nil)
+	for _, q := range failedQueries {
+		//	Retry failed queries one more time
+		fq := ChunkedFilterLogs(ctx, client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), logs, nil)
+		for _, q2 := range fq {
+			log.Error().Str("from", fmt.Sprint(q2.FromBlock)).Str("to", fmt.Sprint(q2.ToBlock)).Msg("aborting failed backfill interval.")
+		}
+	}
+}
