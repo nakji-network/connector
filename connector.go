@@ -358,7 +358,6 @@ func (c *Connector) initProduceChannel(ctx context.Context, input <-chan *kafkau
 			if msg.TopicStr == "" {
 				msg.TopicStr = c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
 			}
-			// topic := c.generateTopicFromProto(msg.Type, msg.ProtoMsg)
 			c.ProducerInterface.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil)
 		}
 	}

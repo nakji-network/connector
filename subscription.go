@@ -2,7 +2,6 @@ package connector
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"os"
 	"os/signal"
@@ -87,7 +86,6 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 }
 
 func (s *Subscription) Subscribe(ctx context.Context) {
-	fmt.Println("CALLING SUBSCRIBE")
 	go s.subscribeHeaders(ctx)
 	go s.subscribeLogs(ctx)
 }
@@ -224,8 +222,6 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 	for {
 		select {
 		case <-s.resubscribe:
-			fmt.Println("CALLING RESUBSCRIBE")
-
 			go s.subscribeLogs(ctx)
 			return
 
@@ -237,8 +233,6 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			log.Error().Err(err).Msg("event log subscription failed")
 
 			if isRetryable(err) {
-				fmt.Println("isRetryable RESUBSCRIBE")
-
 				go s.subscribeLogs(ctx)
 			} else {
 				s.errchan <- err

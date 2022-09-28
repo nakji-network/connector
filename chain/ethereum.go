@@ -147,7 +147,7 @@ func ChunkedFilterLogs(
 	return failedQueries
 }
 
-//	backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
+//	Backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
 func Backfill(
 	ctx context.Context,
 	client *ethclient.Client,
