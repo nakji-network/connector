@@ -280,7 +280,7 @@ func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.M
 
 	tt := c.buildTopicTypes(msgType, protos...)
 
-	err := c.ProtoRegistryCli.RegisterDynamicTopics(tt, c.MsgType)
+	err := c.ProtoRegistryCli.RegisterDynamicTopics(tt, msgType)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to register dynamic topics")
 	}
