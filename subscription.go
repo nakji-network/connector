@@ -27,7 +27,7 @@ type ISubscription interface {
 	Headers() chan *types.Header
 	Logs() chan types.Log
 	Subscribe(context.Context)
-	Unsubscribe()
+	Close()
 }
 
 type Subscription struct {
@@ -76,9 +76,9 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 	go func() {
 		select {
 		case <-s.interrupt:
-			s.Unsubscribe()
+			s.Close()
 		case <-ctx.Done():
-			s.Unsubscribe()
+			s.Close()
 		}
 	}()
 
@@ -86,11 +86,13 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 }
 
 func (s *Subscription) Subscribe(ctx context.Context) {
+	log.Info().Msg("subscribing to headers and logs")
 	go s.subscribeHeaders(ctx)
 	go s.subscribeLogs(ctx)
 }
 
 func (s *Subscription) AddAddress(ctx context.Context, address common.Address, msgType kafkautils.MsgType) {
+	log.Debug().Str("address", address.Hex()).Msg("adding new address")
 	s.addresses = append(s.addresses, address)
 	if msgType == kafkautils.MsgTypeFct {
 		s.resubscribe <- true
@@ -133,8 +135,8 @@ func (s *Subscription) Logs() chan types.Log {
 	return s.logs
 }
 
-//	Unsubscribe closes subscriptions and open channels.
-func (s *Subscription) Unsubscribe() {
+//	Close closes subscriptions and open channels.
+func (s *Subscription) Close() {
 	log.Info().Str("network", s.network).Msg("shutting down subscription")
 	s.done <- true
 	close(s.headers)

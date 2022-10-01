@@ -49,5 +49,5 @@ func TestUnsubscribe(t *testing.T) {
 		<-s.Done()
 	}()
 
-	s.Unsubscribe()
+	s.Close()
 }
