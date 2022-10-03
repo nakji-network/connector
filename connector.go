@@ -32,7 +32,6 @@ type Connector struct {
 	ChainClients     *chain.Clients
 	Config           *viper.Viper
 	Health           healthcheck.Handler
-	MsgType          kafkautils.MsgType
 	ProtoRegistryCli *protoregistry.Client
 
 	//	EventSink can be used to push incoming on-chain events to Kafka.
@@ -60,7 +59,6 @@ func NewConnector(options ...Option) (*Connector, error) {
 	c := &Connector{
 		manifest:         LoadManifest(),
 		env:              kafkautils.Env(conf.GetString("kafka.env")),
-		MsgType:          kafkautils.MsgTypeFct,
 		kafkaUrl:         conf.GetString("kafka.url"),
 		ChainClients:     chain.NewClients(rpcMap),
 		Health:           healthcheck.NewHandler(),
@@ -202,11 +200,11 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msgType k
 		return err
 	}
 
-	err = c.ProducerInterface.CommitTransaction(nil)
+	err = c.ProducerInterface.CommitTransaction(context.TODO())
 	if err != nil {
 		log.Error().Err(err).Msg("Processor: Failed to commit transaction")
 
-		err = c.ProducerInterface.AbortTransaction(nil)
+		err = c.ProducerInterface.AbortTransaction(context.TODO())
 		if err != nil {
 			log.Fatal().Err(err).Msg("")
 		}
