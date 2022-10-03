@@ -156,6 +156,11 @@ func Backfill(
 	fromBlock uint64,
 	toBlock uint64) {
 
+	if fromBlock == toBlock {
+		fmt.Println("returning backifll ")
+		return
+	}
+
 	if toBlock == 0 {
 		var err error
 		toBlock, err = client.BlockNumber(ctx)
@@ -177,4 +182,5 @@ func Backfill(
 			log.Error().Str("from", fmt.Sprint(q2.FromBlock)).Str("to", fmt.Sprint(q2.ToBlock)).Msg("aborting failed backfill interval.")
 		}
 	}
+	close(logs)
 }
