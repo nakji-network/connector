@@ -105,7 +105,7 @@ func ChunkedFilterLogs(
 	fromBlock,
 	toBlock uint64,
 	logChan chan<- types.Log,
-	failedQueries []ethereum.FilterQuery) []ethereum.FilterQuery {
+	failedQueries []ethereum.FilterQuery) ([]ethereum.FilterQuery, error) {
 
 	// Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
 	const (
@@ -113,17 +113,25 @@ func ChunkedFilterLogs(
 		blockChunkSize   uint64 = 50
 	)
 
+	var err error
+
 	if failedQueries == nil {
 		failedQueries = make([]ethereum.FilterQuery, 0)
 	}
 
 	if len(addresses) > addressChunkSize {
-		failedQueries = ChunkedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, failedQueries)
+		failedQueries, err = ChunkedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, failedQueries)
+		if err != nil {
+			return nil, err
+		}
 		return ChunkedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, failedQueries)
 	}
 
 	if toBlock-fromBlock > blockChunkSize {
-		failedQueries = ChunkedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, failedQueries)
+		failedQueries, err = ChunkedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, failedQueries)
+		if err != nil {
+			return nil, err
+		}
 		return ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, failedQueries)
 	}
 
@@ -137,6 +145,12 @@ func ChunkedFilterLogs(
 
 	logs, err := client.FilterLogs(ctx, query)
 	if err != nil {
+		if strings.Contains(err.Error(), "read limit") {
+			// error -> websocket: read limit exceeded
+
+			log.Error().Err(err).Msg("hit RPC rate limit")
+			return nil, err
+		}
 		log.Error().Err(err).Str("from", fmt.Sprint(fromBlock)).Str("to", fmt.Sprint(toBlock)).Msg("skipping failed backfill interval...")
 		failedQueries = append(failedQueries, query)
 	}
@@ -144,7 +158,8 @@ func ChunkedFilterLogs(
 	for _, l := range logs {
 		logChan <- l
 	}
-	return failedQueries
+
+	return failedQueries, err
 }
 
 //	Backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
@@ -154,11 +169,12 @@ func Backfill(
 	addresses []common.Address,
 	logs chan types.Log,
 	fromBlock uint64,
-	toBlock uint64) {
+	toBlock uint64) error {
+
+	defer close(logs)
 
 	if fromBlock == toBlock {
-		fmt.Println("returning backifll ")
-		return
+		return nil
 	}
 
 	if toBlock == 0 {
@@ -170,17 +186,24 @@ func Backfill(
 	}
 
 	if fromBlock >= toBlock {
-		return
+		return nil
 	}
 
 	//	Store failed queries for retry
-	failedQueries := ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, nil)
+	failedQueries, err := ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, nil)
+	if err != nil {
+		return err
+	}
+
 	for _, q := range failedQueries {
 		//	Retry failed queries one more time
-		fq := ChunkedFilterLogs(ctx, client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), logs, nil)
+		fq, err := ChunkedFilterLogs(ctx, client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), logs, nil)
+		if err != nil {
+			return err
+		}
 		for _, q2 := range fq {
 			log.Error().Str("from", fmt.Sprint(q2.FromBlock)).Str("to", fmt.Sprint(q2.ToBlock)).Msg("aborting failed backfill interval.")
 		}
 	}
-	close(logs)
+	return nil
 }
