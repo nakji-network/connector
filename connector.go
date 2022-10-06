@@ -81,7 +81,7 @@ func NewConnector(options ...Option) (*Connector, error) {
 		Msg("Starting connector")
 
 	//	Create kafka Produce channel and provide an outlet to connector object
-	eventSink := make(chan *kafkautils.Message)
+	eventSink := make(chan *kafkautils.Message, 10000)
 	go c.initProduceChannel(context.Background(), eventSink)
 	c.EventSink = eventSink
 

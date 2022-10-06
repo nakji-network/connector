@@ -1,4 +1,4 @@
-package connector
+package subscription
 
 import (
 	"context"
@@ -35,14 +35,17 @@ func TestGetBlockTime(t *testing.T) {
 	}
 }
 
-func TestUnsubscribe(t *testing.T) {
+func TestClose(t *testing.T) {
 	t.Parallel()
 
 	s := Subscription{
 		done:    make(chan bool),
 		headers: make(chan *types.Header),
 		client:  &ethclient.Client{},
-		logs:    make(chan types.Log),
+		inLogs:  make(chan types.Log),
+		outLogs: make(chan types.Log),
+		inErr:   make(chan error),
+		outErr:  make(chan error),
 	}
 
 	go func() {

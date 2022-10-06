@@ -1,4 +1,8 @@
-package connector
+//	Package subscription takes care of most of the heavy lifting interacting with a blockchain network.
+//	It connects to the network for real-time data and provides the results through channels.
+//	It also handles websocket disconnections
+
+package subscription
 
 import (
 	"context"
@@ -20,12 +24,11 @@ import (
 
 type ISubscription interface {
 	AddAddress(context.Context, common.Address, kafkautils.MsgType)
-	Client() *ethclient.Client
 	Done() <-chan bool
 	Err() <-chan error
 	GetBlockTime(context.Context, types.Log) (uint64, error)
-	Headers() chan *types.Header
-	Logs() chan types.Log
+	Headers() <-chan *types.Header
+	Logs() <-chan types.Log
 	Subscribe(context.Context)
 	Close()
 }
@@ -42,26 +45,27 @@ type Subscription struct {
 
 	//	Network subscription
 	headers           chan *types.Header //	Block header channel
-	logs              chan types.Log     //	Event log channel
-	errchan           chan error         //	Aggregate channel for errors
+	inLogs            chan types.Log     //	Event logs coming from the network
+	outLogs           chan types.Log     //	Event logs pushed to the connector
+	inErr             chan error         //	Aggregate channel for errors coming from the network
+	outErr            chan error         //	Aggregate channel for errors sent to connector
 	cache             *lru.Cache         //	Store timestamps for block numbers
 	isHeaderRequired  bool               //	Flag to release block headers, if user wants them
 	latestBlockNumber *big.Int
 }
 
 //	NewSubscription	connects to given endpoints and subscribes to blockchain.
-func NewSubscription(ctx context.Context, connector *Connector, network string, addresses []common.Address) (*Subscription, error) {
+func NewSubscription(ctx context.Context, client *ethclient.Client, network string, addresses []common.Address) (*Subscription, error) {
 	s := Subscription{
 		addresses:        addresses,
-		done:             make(chan bool, 1),
-		resubscribe:      make(chan bool, 1),
-		client:           connector.ChainClients.Ethereum(ctx, network),
-		errchan:          make(chan error, 1),
-		headers:          make(chan *types.Header),
-		interrupt:        make(chan os.Signal, 1),
-		isHeaderRequired: false,
-		logs:             make(chan types.Log),
+		client:           client,
 		network:          network,
+		done:             make(chan bool, 1),
+		interrupt:        make(chan os.Signal, 1),
+		resubscribe:      make(chan bool, 1),
+		inErr:            make(chan error, 1),
+		outErr:           make(chan error, 1),
+		isHeaderRequired: false,
 	}
 
 	//	Create cache for storing block timestamp
@@ -74,12 +78,8 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 	signal.Notify(s.interrupt, os.Interrupt)
 
 	go func() {
-		select {
-		case <-s.interrupt:
-			s.Close()
-		case <-ctx.Done():
-			s.Close()
-		}
+		<-s.interrupt
+		s.done <- true
 	}()
 
 	return &s, nil
@@ -87,6 +87,11 @@ func NewSubscription(ctx context.Context, connector *Connector, network string, 
 
 func (s *Subscription) Subscribe(ctx context.Context) {
 	log.Info().Msg("subscribing to headers and logs")
+
+	s.headers = make(chan *types.Header, 10)
+	s.inLogs = make(chan types.Log, 10000)
+	s.outLogs = make(chan types.Log, 10000)
+
 	go s.subscribeHeaders(ctx)
 	go s.subscribeLogs(ctx)
 }
@@ -99,16 +104,12 @@ func (s *Subscription) AddAddress(ctx context.Context, address common.Address, m
 	}
 }
 
-func (s *Subscription) Client() *ethclient.Client {
-	return s.client
-}
-
 func (s *Subscription) Done() <-chan bool {
 	return s.done
 }
 
 func (s *Subscription) Err() <-chan error {
-	return s.errchan
+	return s.outErr
 }
 
 // GetBlockTime retrieves block time from cache.
@@ -126,21 +127,28 @@ func (s *Subscription) GetBlockTime(ctx context.Context, vLog types.Log) (uint64
 	return val.(uint64), nil
 }
 
-func (s *Subscription) Headers() chan *types.Header {
+func (s *Subscription) Headers() <-chan *types.Header {
 	s.isHeaderRequired = true
 	return s.headers
 }
 
-func (s *Subscription) Logs() chan types.Log {
-	return s.logs
+func (s *Subscription) Logs() <-chan types.Log {
+	return s.outLogs
 }
 
 //	Close closes subscriptions and open channels.
 func (s *Subscription) Close() {
 	log.Info().Str("network", s.network).Msg("shutting down subscription")
 	s.done <- true
-	close(s.headers)
-	close(s.logs)
+	if s.headers != nil {
+		close(s.headers)
+	}
+	if s.inLogs != nil {
+		close(s.inLogs)
+		close(s.outLogs)
+	}
+	close(s.inErr)
+	close(s.outErr)
 }
 
 //	getBlockTimeFromChain queries the blockchain and retrieves block time.
@@ -163,7 +171,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 	hs, err := s.client.SubscribeNewHead(ctx, headers)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to subscribe to block headers")
-		s.errchan <- err
+		s.outErr <- err
 		return
 	}
 	defer hs.Unsubscribe()
@@ -181,14 +189,14 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 			if isRetryable(err) {
 				go s.subscribeHeaders(ctx)
 			} else {
-				s.errchan <- err
+				s.outErr <- err
 			}
 			return
 
 		case header := <-headers:
 			//	Start a backfill when there are missing blocks
 			if s.latestBlockNumber != nil && header.Number.Uint64()-s.latestBlockNumber.Uint64() > 1 {
-				go chain.Backfill(ctx, s.client, s.addresses, s.logs, s.latestBlockNumber.Uint64(), header.Number.Uint64())
+				go chain.Backfill(ctx, s.client, s.addresses, s.inLogs, s.latestBlockNumber.Uint64(), header.Number.Uint64())
 			}
 
 			s.cache.ContainsOrAdd(header.Hash().Hex(), header.Time)
@@ -206,16 +214,13 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 func (s *Subscription) subscribeLogs(ctx context.Context) {
 	log.Debug().Str("network", s.network).Msg("subscribing to event logs..")
 
-	logch := make(chan types.Log)
-	errch := make(chan error)
-	subs, err := chain.ChunkedSubscribeFilterLogs(ctx, s.client, s.addresses, logch, errch, nil)
+	subs, err := chain.ChunkedSubscribeFilterLogs(ctx, s.client, s.addresses, s.inLogs, s.inErr, nil)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to subscribe to event logs")
 	}
 	for _, sub := range subs {
 		defer sub.Unsubscribe()
 	}
-	defer close(logch)
 
 	tWait := time.Second
 	tMin := time.Second
@@ -231,17 +236,17 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			s.done <- true
 			return
 
-		case err = <-errch:
+		case err = <-s.inErr:
 			log.Error().Err(err).Msg("event log subscription failed")
 
 			if isRetryable(err) {
 				go s.subscribeLogs(ctx)
 			} else {
-				s.errchan <- err
+				s.outErr <- err
 			}
 			return
 
-		case vLog := <-logch:
+		case vLog := <-s.inLogs:
 			_, err := s.GetBlockTime(ctx, vLog)
 			for err != nil {
 				log.Debug().Uint64("block", vLog.BlockNumber).Str("network", s.network).Msg("waiting for block timestamp")
@@ -254,7 +259,7 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 				}
 			}
 			tWait = tMin
-			s.logs <- vLog
+			s.outLogs <- vLog
 		}
 	}
 }
