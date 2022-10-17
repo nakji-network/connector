@@ -1,2 +1,2 @@
 # Compound Connector
-This is an example connector that uses base connector and proto registry.
+This is an example compound connector that uses `EthereumConnector` as a base connector.

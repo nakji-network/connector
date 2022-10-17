@@ -19,9 +19,9 @@ func UnmarshalEthHeader(in *types.Header) *Block0 {
 }
 
 // go-ethereum Block to nakji struct
-func (b *Block) UnmarshalEthBlock(in *types.Block) {
-	*b = Block{
-		Timestamp:  &timestamp.Timestamp{Seconds: int64(in.Time())},
+func (x *Block) UnmarshalEthBlock(in *types.Block) {
+	*x = Block{
+		Ts:         &timestamp.Timestamp{Seconds: int64(in.Time())},
 		Hash:       in.Hash().Hex(),
 		Difficulty: in.Difficulty().Uint64(),
 		Number:     in.Number().Uint64(),
