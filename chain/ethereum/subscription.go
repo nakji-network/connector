@@ -1,4 +1,4 @@
-//	Package subscription takes care of most of the heavy lifting interacting with a blockchain chain.
+//	It takes care of most of the heavy lifting interacting with a blockchain chain.
 //	It connects to the chain for real-time data and provides the results through channels.
 //	It also handles websocket disconnections
 
@@ -37,16 +37,16 @@ type Subscription struct {
 	done        chan bool      //	Channel to signal ongoing subscriptions
 	resubscribe chan bool      //	Channel to signal for resubscribing to logs
 
-	//	Blockchain network
-	network   string
+	//	Blockchain chain
+	chain     string
 	addresses []common.Address
 	client    *ethclient.Client
 
 	//	Network subscription
 	headers           chan *types.Header //	Block header channel
-	inLogs            chan types.Log     //	Event logs coming from the network
+	inLogs            chan types.Log     //	Event logs coming from the chain
 	outLogs           chan types.Log     //	Event logs pushed to the connector
-	inErr             chan error         //	Aggregate channel for errors coming from the network
+	inErr             chan error         //	Aggregate channel for errors coming from the chain
 	outErr            chan error         //	Aggregate channel for errors sent to connector
 	cache             *lru.Cache         //	Store timestamps for block numbers
 	isHeaderRequired  bool               //	Flag to release block headers, if user wants them
@@ -54,11 +54,11 @@ type Subscription struct {
 }
 
 //	NewSubscription	connects to given endpoints and subscribes to blockchain.
-func NewSubscription(client *ethclient.Client, network string, addresses []common.Address) (*Subscription, error) {
+func NewSubscription(client *ethclient.Client, chain string, addresses []common.Address) (*Subscription, error) {
 	s := Subscription{
 		addresses:        addresses,
 		client:           client,
-		network:          network,
+		chain:            chain,
 		done:             make(chan bool, 1),
 		interrupt:        make(chan os.Signal, 1),
 		resubscribe:      make(chan bool, 1),
@@ -137,7 +137,7 @@ func (s *Subscription) Logs() <-chan types.Log {
 
 //	Close closes subscriptions and open channels.
 func (s *Subscription) Close() {
-	log.Info().Str("chain", s.network).Msg("shutting down subscription")
+	log.Info().Str("chain", s.chain).Msg("shutting down subscription")
 	s.done <- true
 	if s.headers != nil {
 		close(s.headers)
@@ -164,7 +164,7 @@ func (s *Subscription) getBlockTimeFromChain(ctx context.Context, blockHash comm
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeHeaders(ctx context.Context) {
-	log.Debug().Str("chain", s.network).Msg("subscribing to headers..")
+	log.Debug().Str("chain", s.chain).Msg("subscribing to headers..")
 
 	headers := make(chan *types.Header)
 	hs, err := s.client.SubscribeNewHead(ctx, headers)
@@ -203,7 +203,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 				s.headers <- header
 			}
 
-			log.Debug().Str("block", header.Number.String()).Str("chain", s.network).Uint64("ts", header.Time).Msg("header received")
+			log.Debug().Str("block", header.Number.String()).Str("chain", s.chain).Uint64("ts", header.Time).Msg("header received")
 			s.latestBlockNumber = header.Number
 		}
 	}
@@ -211,7 +211,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 
 //	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeLogs(ctx context.Context) {
-	log.Debug().Str("chain", s.network).Msg("subscribing to event logs..")
+	log.Debug().Str("chain", s.chain).Msg("subscribing to event logs..")
 
 	subs, err := ChunkedSubscribeFilterLogs(ctx, s.client, s.addresses, s.inLogs, s.inErr, nil)
 	if err != nil {
@@ -248,12 +248,12 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 		case vLog := <-s.inLogs:
 			_, err := s.GetBlockTime(ctx, vLog)
 			for err != nil {
-				log.Debug().Uint64("block", vLog.BlockNumber).Str("chain", s.network).Msg("waiting for block timestamp")
+				log.Debug().Uint64("block", vLog.BlockNumber).Str("chain", s.chain).Msg("waiting for block timestamp")
 				time.Sleep(tWait)
 				tWait *= 2
 				_, err = s.GetBlockTime(ctx, vLog)
 				if tWait > tMax {
-					log.Warn().Uint64("block", vLog.BlockNumber).Str("chain", s.network).Msg("block timestamp not available")
+					log.Warn().Uint64("block", vLog.BlockNumber).Str("chain", s.chain).Msg("block timestamp not available")
 					break
 				}
 			}

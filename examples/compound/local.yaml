@@ -3,10 +3,8 @@ log:
   format: console
 kafka:
   url: localhost:9092
-  env: staging # set it to dev if you would like to disable protoregistry
+  env: dev # set it to dev if you would like to disable protoregistry
 rpcs:
   ethereum:
     full:
       - your infura websocket endpoint here
-protoregistry:
-  host: localhost:9191

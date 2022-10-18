@@ -1,5 +1,7 @@
-// ethereum package follows https://goethereumbook.org/block-subscribe/ to
+// Package ethereum follows https://goethereumbook.org/block-subscribe/ to
 // subscribe to new Blocks and Transactions and writes the results to Nakji.
+
+// It also works for other evm-compatible chains, as long as they use the ethclient.Client.
 package ethereum
 
 import (
@@ -18,29 +20,25 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-const chain = "ethereum"
-
 type Connector struct {
 	*connector.Connector // embed Nakji connector.Connector into your custom connector to get access to all its methods
-	client               *ethclient.Client
-	// Any additional custom connections not supported natively by Nakji
-	// Client: DogecoinClient(context.Background()),
 
-	// Any additional command line arguments, such as chain selection override. Set up via https://pkg.go.dev/github.com/spf13/viper#readme-working-with-flags
-	// Chain: "bsc",
+	// Any additional custom connections not supported natively by Nakji, replace it as you see fit.
+	// eg: client: DogecoinClient(context.Background()),
+	client *ethclient.Client
 
 	// Any additional config vars from the config yaml, using functions from Viper (https://pkg.go.dev/github.com/spf13/viper#readme-getting-values-from-viper)
 	// This is namespaced via connector id (author-name-version)
 	// CustomOption: c.Config.GetString("custom_option"),
 }
 
-func NewConnector() *Connector {
+func NewConnector(chain string) *Connector {
 	c, err := connector.NewConnector()
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate nakji connector")
 	}
 
-	// Read config from config yaml under `rpcs.ethereum.full`
+	// Read config from config yaml under `rpcs.[chain].full`
 	rpcs := c.RPCMap[chain].Full
 
 	// go-ethereum client only supports 1 rpc connection currently, so we do this hack
@@ -71,6 +69,9 @@ func NewConnector() *Connector {
 }
 
 func (c *Connector) Start() {
+	// Register topic and protobuf type mappings
+	c.RegisterProtos(kafkautils.MsgTypeFct, protos...)
+
 	// Listen for interrupt in order to cleanly close connections later
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)

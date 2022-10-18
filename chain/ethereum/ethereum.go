@@ -33,16 +33,14 @@ type Connector struct {
 	Sub ISubscription
 }
 
-const chain = "ethereum"
-
-// NewConnector returns an ethereum connector connected to websockets RPC
-func NewConnector(ctx context.Context, addresses []common.Address) *Connector {
+// NewConnector returns an evm-compatible connector connected to websockets RPC
+func NewConnector(ctx context.Context, addresses []common.Address, chain string) *Connector {
 	c, err := connector.NewConnector()
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate nakji connector")
 	}
 
-	// Read config from config yaml under `rpcs.ethereum.full`
+	// Read config from config yaml under `rpcs.[chain].full`
 	rpcs := c.RPCMap[chain].Full
 
 	// go-ethereum client only supports 1 rpc connection currently, so we do this hack

@@ -24,7 +24,7 @@ func NewConnector() *Connector {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	ec := ethereum.NewConnector(ctx, addresses)
+	ec := ethereum.NewConnector(ctx, addresses, "ethereum")
 
 	return &Connector{
 		Connector: ec,
