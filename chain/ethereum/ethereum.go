@@ -1,3 +1,11 @@
+// Package ethereum provides a base ethereum connector as well as some functionalities
+// such as eth block headers and logs subscription etc.
+//
+// It also works for other evm-compatible chains as long as their ethclient implement the ETHClient interface.
+//
+// Users only need to embed it into their connectors in order to use it.
+// See more examples at: https://github.com/nakji-network/connector/tree/main/examples
+
 package ethereum
 
 import (
@@ -70,7 +78,6 @@ func NewConnector(ctx context.Context, addresses []common.Address) *Connector {
 // Resulting `ethereum.Subsription` objects are returned as an array for later use by the caller.
 // Default chunksize = 7350 for quiknode.
 func ChunkedSubscribeFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, logChan chan<- types.Log, errChan chan<- error, subs []ethereum.Subscription) ([]ethereum.Subscription, error) {
-
 	if subs == nil {
 		subs = make([]ethereum.Subscription, 0)
 	}
@@ -109,25 +116,32 @@ func ChunkedSubscribeFilterLogs(ctx context.Context, client ETHClient, addresses
 //	It slices addresses and total number of blocks with pre-defined batch size.
 //	The results are later fed into a log chan that was provided by the caller.
 //	Failed query intervals are fed into another channel to allow the caller to retry later.
-func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, failedQueries []ethereum.FilterQuery) []ethereum.FilterQuery {
-
+func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, failedQueries []ethereum.FilterQuery) ([]ethereum.FilterQuery, error) {
 	// Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
 	const (
 		addressChunkSize int    = 7350
 		blockChunkSize   uint64 = 50
 	)
 
+	var err error
+
 	if failedQueries == nil {
 		failedQueries = make([]ethereum.FilterQuery, 0)
 	}
 
 	if len(addresses) > addressChunkSize {
-		failedQueries = ChunkedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, failedQueries)
+		failedQueries, err = ChunkedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, failedQueries)
+		if err != nil {
+			return nil, err
+		}
 		return ChunkedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, failedQueries)
 	}
 
 	if toBlock-fromBlock > blockChunkSize {
-		failedQueries = ChunkedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, failedQueries)
+		failedQueries, err = ChunkedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, failedQueries)
+		if err != nil {
+			return nil, err
+		}
 		return ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, failedQueries)
 	}
 
@@ -141,6 +155,12 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 
 	logs, err := client.FilterLogs(ctx, query)
 	if err != nil {
+		if strings.Contains(err.Error(), "read limit") {
+			// error -> websocket: read limit exceeded
+
+			log.Error().Err(err).Msg("hit RPC rate limit")
+			return nil, err
+		}
 		log.Error().Err(err).Str("from", fmt.Sprint(fromBlock)).Str("to", fmt.Sprint(toBlock)).Msg("skipping failed backfill interval...")
 		failedQueries = append(failedQueries, query)
 	}
@@ -148,15 +168,16 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 	for _, l := range logs {
 		logChan <- l
 	}
-	return failedQueries
+
+	return failedQueries, err
 }
 
 //	Backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
-func Backfill(ctx context.Context, client *ethclient.Client, addresses []common.Address, logs chan types.Log, fromBlock uint64, toBlock uint64) {
+func Backfill(ctx context.Context, client *ethclient.Client, addresses []common.Address, logs chan types.Log, fromBlock uint64, toBlock uint64) error {
+	defer close(logs)
 
 	if fromBlock == toBlock {
-		fmt.Println("returning backifll ")
-		return
+		return nil
 	}
 
 	if toBlock == 0 {
@@ -168,17 +189,24 @@ func Backfill(ctx context.Context, client *ethclient.Client, addresses []common.
 	}
 
 	if fromBlock >= toBlock {
-		return
+		return nil
 	}
 
 	//	Store failed queries for retry
-	failedQueries := ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, nil)
+	failedQueries, err := ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, nil)
+	if err != nil {
+		return err
+	}
+
 	for _, q := range failedQueries {
 		//	Retry failed queries one more time
-		fq := ChunkedFilterLogs(ctx, client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), logs, nil)
+		fq, err := ChunkedFilterLogs(ctx, client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), logs, nil)
+		if err != nil {
+			return err
+		}
 		for _, q2 := range fq {
 			log.Error().Str("from", fmt.Sprint(q2.FromBlock)).Str("to", fmt.Sprint(q2.ToBlock)).Msg("aborting failed backfill interval.")
 		}
 	}
-	close(logs)
+	return nil
 }
