@@ -3,7 +3,7 @@ log:
   format: console
 kafka:
   url: localhost:9092
-  env: staging
+  env: dev
 rpcs:
   ethereum:
     full:

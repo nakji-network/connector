@@ -13,21 +13,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-//go:generate mockgen -destination=mocks/mock_producer.go -package=mocks . ProducerInterface
-type ProducerInterface interface {
-	InitTransactions(context.Context) error
-	BeginTransaction() error
-	CommitTransaction(context.Context) error
-	AbortTransaction(context.Context) error
-	EnableTransactions() error
-	ListenDeliveryChan(delivery chan kafka.Event)
-	ProduceMsg(topic string, msg proto.Message, key []byte, deliveryChan chan kafka.Event) error
-	WriteAndCommitSink(<-chan *Message)
-	WriteAndCommit(Topic, []byte, proto.Message) error
-	MakeQueueTransactionSink() chan *Message
-	Close()
-}
-
 type Producer struct {
 	*kafka.Producer
 	termChan chan bool

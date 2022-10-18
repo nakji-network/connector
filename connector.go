@@ -21,7 +21,7 @@ import (
 
 type Connector struct {
 	*kafkautils.Consumer
-	kafkautils.ProducerInterface
+	*kafkautils.Producer
 
 	consumerStarted bool
 	env             kafkautils.Env
@@ -29,7 +29,7 @@ type Connector struct {
 	manifest        *manifest
 	producerStarted bool
 
-	ChainClients     *chain.Clients
+	RPCMap           map[string]chain.RPCs
 	Config           *viper.Viper
 	Health           healthcheck.Handler
 	ProtoRegistryCli *protoregistry.Client
@@ -60,8 +60,8 @@ func NewConnector(options ...Option) (*Connector, error) {
 		manifest:         LoadManifest(),
 		env:              kafkautils.Env(conf.GetString("kafka.env")),
 		kafkaUrl:         conf.GetString("kafka.url"),
-		ChainClients:     chain.NewClients(rpcMap),
 		Health:           healthcheck.NewHandler(),
+		RPCMap:           rpcMap,
 		ProtoRegistryCli: prc,
 	}
 
@@ -82,7 +82,7 @@ func NewConnector(options ...Option) (*Connector, error) {
 
 	//	Create kafka Produce channel and provide an outlet to connector object
 	eventSink := make(chan *kafkautils.Message, 10000)
-	go c.initProduceChannel(context.Background(), eventSink)
+	go c.initProduceChannel(eventSink)
 	c.EventSink = eventSink
 
 	// For Liveness and Readiness Probe checks
@@ -190,7 +190,7 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msgType k
 	}
 
 	// Start a new transaction
-	err := c.ProducerInterface.BeginTransaction()
+	err := c.Producer.BeginTransaction()
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
@@ -200,11 +200,11 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msgType k
 		return err
 	}
 
-	err = c.ProducerInterface.CommitTransaction(context.TODO())
+	err = c.Producer.CommitTransaction(context.TODO())
 	if err != nil {
 		log.Error().Err(err).Msg("Processor: Failed to commit transaction")
 
-		err = c.ProducerInterface.AbortTransaction(context.TODO())
+		err = c.Producer.AbortTransaction(context.TODO())
 		if err != nil {
 			log.Fatal().Err(err).Msg("")
 		}
@@ -222,12 +222,12 @@ func (c *Connector) startProducer() error {
 		Msg("Initializing kafka producer")
 
 	var err error
-	c.ProducerInterface, err = kafkautils.NewProducer(c.kafkaUrl, txID)
+	c.Producer, err = kafkautils.NewProducer(c.kafkaUrl, txID)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create new kafka producer")
 		return err
 	}
-	err = c.ProducerInterface.EnableTransactions()
+	err = c.Producer.EnableTransactions()
 	if err != nil {
 		return err
 	}
@@ -296,7 +296,7 @@ func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.
 
 //	InitProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
 //	It wraps messages in Kafka Transactions to ensure Exactly Once Semantics.
-func (c *Connector) initProduceChannel(ctx context.Context, input <-chan *kafkautils.Message) {
+func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 
 	c.startProducer()
 	ticker := time.NewTicker(time.Second)
@@ -308,7 +308,7 @@ func (c *Connector) initProduceChannel(ctx context.Context, input <-chan *kafkau
 
 		retry:
 			if hasMessage {
-				err := c.ProducerInterface.CommitTransaction(context.TODO())
+				err := c.Producer.CommitTransaction(context.TODO())
 				if err != nil {
 					if err.(kafka.Error).IsRetriable() {
 						log.Warn().Err(err).
@@ -317,7 +317,7 @@ func (c *Connector) initProduceChannel(ctx context.Context, input <-chan *kafkau
 						goto retry
 
 					} else if err.(kafka.Error).Code() == kafka.ErrProducerFenced {
-						c.ProducerInterface.Close()
+						c.Producer.Close()
 
 					} else if err.(kafka.Error).Code() == kafka.ErrTimedOut {
 						log.Warn().Err(err).
@@ -329,7 +329,7 @@ func (c *Connector) initProduceChannel(ctx context.Context, input <-chan *kafkau
 							Str("error code", err.(kafka.Error).Code().String()).
 							Msg("failed to commit transactions, aborting..")
 
-						err = c.ProducerInterface.AbortTransaction(context.TODO())
+						err = c.Producer.AbortTransaction(context.TODO())
 						if err != nil {
 							log.Fatal().Err(err).
 								Str("error code", err.(kafka.Error).Code().String()).
@@ -344,7 +344,7 @@ func (c *Connector) initProduceChannel(ctx context.Context, input <-chan *kafkau
 			}
 		case msg := <-input:
 			if !hasMessage {
-				err := c.ProducerInterface.BeginTransaction()
+				err := c.Producer.BeginTransaction()
 				if err != nil {
 					log.Fatal().Err(err).
 						Str("error code", err.(kafka.Error).Code().String()).
@@ -356,7 +356,7 @@ func (c *Connector) initProduceChannel(ctx context.Context, input <-chan *kafkau
 			if msg.TopicStr == "" {
 				msg.TopicStr = c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
 			}
-			c.ProducerInterface.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil)
+			c.Producer.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil)
 		}
 	}
 }
