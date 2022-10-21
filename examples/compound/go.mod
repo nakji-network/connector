@@ -8,7 +8,7 @@ replace github.com/nakji-network/connector => ../../
 
 require (
 	github.com/ethereum/go-ethereum v1.10.25
-	github.com/nakji-network/connector v0.0.1-beta.1.0.20220701183428-93591c3ee390
+	github.com/nakji-network/connector v0.0.1-beta.1.0.20221018101547-d902410ccd4a
 	github.com/nakji-network/connector/chain/ethereum v0.0.0-00010101000000-000000000000
 	github.com/rs/zerolog v1.28.0
 	google.golang.org/protobuf v1.28.1
