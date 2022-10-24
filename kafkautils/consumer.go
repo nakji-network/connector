@@ -3,14 +3,26 @@
 package kafkautils
 
 import (
+	"context"
+
+	"github.com/nakji-network/connector/monitor"
+
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
+	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Consumer struct {
 	*kafka.Consumer
 	messages <-chan Message
 }
+
+const (
+	spanName  = "kafka -> end"
+	eventName = "received kafka message"
+)
 
 // NewConsumer prepares a message queue consumer. Subscribe to proto messages on .Messages chan
 func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap) (*Consumer, error) {
@@ -77,6 +89,27 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 			case *kafka.Message:
 				//log.Debug().Str("topicPartition", e.TopicPartition.String()).Str("val", string(e.Value)).Msg("kafka received message")
 
+				// Extract tracing info from message
+				ctx := otel.GetTextMapPropagator().Extract(context.Background(), monitor.NewMessageCarrier(e))
+
+				tr := monitor.CreateTracer(monitor.DefaultTracerName)
+				_, span := monitor.StartSpan(
+					ctx,
+					tr,
+					spanName,
+					trace.WithSpanKind(trace.SpanKindConsumer),
+					trace.WithAttributes(
+						semconv.MessagingSystemKey.String("kafka"),
+						semconv.MessagingDestinationKindTopic,
+						semconv.MessagingOperationProcess,
+						semconv.MessagingKafkaMessageKeyKey.String(string(e.Key)),
+						semconv.MessagingKafkaClientIDKey.String(c.String()),
+						semconv.MessagingKafkaPartitionKey.Int(int(e.TopicPartition.Partition)),
+						semconv.MessagingDestinationKey.String(*e.TopicPartition.Topic),
+					),
+				)
+				span.AddEvent(eventName)
+
 				k, err := ParseKey(e.Key)
 				if err != nil {
 					log.Error().Err(err).Msg("")
@@ -99,6 +132,7 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 					Topic:    t,
 					Key:      k,
 					ProtoMsg: protoMsg,
+					Span:     span,
 				}
 
 			case kafka.PartitionEOF:
