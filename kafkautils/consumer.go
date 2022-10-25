@@ -20,8 +20,8 @@ type Consumer struct {
 }
 
 const (
-	spanName  = "kafka -> end"
-	eventName = "received kafka message"
+	spanName          = "kafka -> end"
+	consumerEventName = "consume kafka message"
 )
 
 // NewConsumer prepares a message queue consumer. Subscribe to proto messages on .Messages chan
@@ -108,7 +108,7 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 						semconv.MessagingDestinationKey.String(*e.TopicPartition.Topic),
 					),
 				)
-				span.AddEvent(eventName)
+				span.AddEvent(consumerEventName)
 
 				k, err := ParseKey(e.Key)
 				if err != nil {

@@ -185,7 +185,7 @@ func (c *Connector) SubscribeExample() error {
 func (c *Connector) ProduceMessage(namespace, subject string, msgType kafkautils.MsgType, msg proto.Message) error {
 	topic := c.generateTopicFromProto(msgType, msg)
 	key := kafkautils.NewKey(namespace, subject)
-	return c.ProduceMsg(topic.String(), msg, key.Bytes(), nil)
+	return c.ProduceMsg(topic.String(), msg, key.Bytes(), nil, nil)
 }
 
 // ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
@@ -365,7 +365,7 @@ func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 				msg.TopicStr = c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
 			}
 
-			c.Producer.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil)
+			c.Producer.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil, msg.Span)
 		}
 	}
 }
