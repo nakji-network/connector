@@ -10,6 +10,8 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -34,6 +36,8 @@ const (
 
 	//default 1000 https://docs.confluent.io/2.0.0/clients/librdkafka/CONFIGURATION_8md.html
 	KafkaProducerQueueBufferingMaxMS = 2000
+
+	producerEventName = "produce kafka message"
 )
 
 func MustNewProducer(brokers, transactionalID string) *Producer {
@@ -236,8 +240,8 @@ func (p *Producer) SendOffsetsToTransaction(position kafka.TopicPartitions, c *C
 }
 
 // WriteAndCommit writes for transactional producers, committing transaction after each write
-func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message) error {
-	err := p.ProduceMsg(topic.String(), value, key, nil)
+func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message, span trace.Span) error {
+	err := p.ProduceMsg(topic.String(), value, key, nil, span)
 	if err != nil {
 		return err
 	}
@@ -290,6 +294,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 					msg.Topic,
 					msg.Key.Bytes(),
 					msg.ProtoMsg,
+					msg.Span,
 				)
 
 				if err != nil {
@@ -309,6 +314,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 					msg.Topic,
 					msg.Key.Bytes(),
 					msg.ProtoMsg,
+					msg.Span,
 				)
 
 				if err != nil {
@@ -323,7 +329,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 				continue
 			}
 
-			err := p.ProduceMsg(msg.Topic.String(), msg.ProtoMsg, msg.Key.Bytes(), nil)
+			err := p.ProduceMsg(msg.Topic.String(), msg.ProtoMsg, msg.Key.Bytes(), nil, msg.Span)
 			if err != nil {
 				log.Error().Err(err).
 					Str("topic", msg.Topic.String()).
@@ -351,7 +357,7 @@ func (p *Producer) MakeQueueTransactionSink() chan *Message {
 
 //	ProduceMsg sends single protobuf message to a Kafka topic. It can optionally include a key and timestamp.
 //	An event channel can be provided for Kafka event response.
-func (p *Producer) ProduceMsg(topic string, msg proto.Message, key []byte, delivery chan kafka.Event) error {
+func (p *Producer) ProduceMsg(topic string, msg proto.Message, key []byte, delivery chan kafka.Event, span trace.Span) error {
 	if p.closed {
 		return fmt.Errorf("cannot produce message, producer is already closed")
 	}
@@ -370,6 +376,15 @@ func (p *Producer) ProduceMsg(topic string, msg proto.Message, key []byte, deliv
 
 	if key != nil {
 		kafkaMsg.Key = key
+	}
+
+	if span != nil {
+		// Inject trace metadata into kafka message headers
+		ctx := trace.ContextWithSpan(context.TODO(), span)
+		otel.GetTextMapPropagator().Inject(ctx, monitor.NewMessageCarrier(kafkaMsg))
+
+		span.AddEvent(producerEventName)
+		monitor.EndSpan(span, nil)
 	}
 
 	return p.Produce(kafkaMsg, delivery)
