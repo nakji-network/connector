@@ -73,6 +73,7 @@ func NewConnector(options ...Option) (*Connector, error) {
 		log.Fatal().Msg("missing manifest.yaml")
 	}
 
+	// allow users to access configs in the namespace `c.id()`
 	c.Config = conf.Sub(c.id())
 	if c.Config == nil {
 		c.Config = viper.New()
@@ -302,8 +303,9 @@ func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.
 	return tt
 }
 
-//	InitProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
-//	It wraps messages in Kafka Transactions to ensure Exactly Once Semantics.
+//	initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
+//	It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
+//  NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
 func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 
 	c.startProducer()
