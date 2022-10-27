@@ -13,12 +13,19 @@ import (
 	"time"
 
 	"github.com/nakji-network/connector/kafkautils"
+	"github.com/nakji-network/connector/monitor"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	spanName  = "connector -> kafka"
+	eventName = "receive event log"
 )
 
 type ISubscription interface {
@@ -27,7 +34,7 @@ type ISubscription interface {
 	Err() <-chan error
 	GetBlockTime(context.Context, types.Log) (uint64, error)
 	Headers() <-chan *types.Header
-	Logs() <-chan types.Log
+	Logs() <-chan Log
 	Subscribe(context.Context)
 	Close()
 }
@@ -45,12 +52,17 @@ type Subscription struct {
 	//	Network subscription
 	headers           chan *types.Header //	Block header channel
 	inLogs            chan types.Log     //	Event logs coming from the chain
-	outLogs           chan types.Log     //	Event logs pushed to the connector
+	outLogs           chan Log           //	Event logs pushed to the connector
 	inErr             chan error         //	Aggregate channel for errors coming from the chain
 	outErr            chan error         //	Aggregate channel for errors sent to connector
 	cache             *lru.Cache         //	Store timestamps for block numbers
 	isHeaderRequired  bool               //	Flag to release block headers, if user wants them
 	latestBlockNumber *big.Int
+}
+
+type Log struct {
+	types.Log
+	Span trace.Span
 }
 
 //	NewSubscription	connects to given endpoints and subscribes to blockchain.
@@ -89,7 +101,7 @@ func (s *Subscription) Subscribe(ctx context.Context) {
 
 	s.headers = make(chan *types.Header, 10)
 	s.inLogs = make(chan types.Log, 10000)
-	s.outLogs = make(chan types.Log, 10000)
+	s.outLogs = make(chan Log, 10000)
 
 	go s.subscribeHeaders(ctx)
 	go s.subscribeLogs(ctx)
@@ -131,7 +143,7 @@ func (s *Subscription) Headers() <-chan *types.Header {
 	return s.headers
 }
 
-func (s *Subscription) Logs() <-chan types.Log {
+func (s *Subscription) Logs() <-chan Log {
 	return s.outLogs
 }
 
@@ -246,6 +258,14 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			return
 
 		case vLog := <-s.inLogs:
+			tr := monitor.CreateTracer(monitor.DefaultTracerName)
+			_, span := monitor.StartSpan(
+				context.TODO(),
+				tr,
+				spanName,
+				trace.WithSpanKind(trace.SpanKindProducer),
+			)
+			span.AddEvent(eventName)
 			_, err := s.GetBlockTime(ctx, vLog)
 			for err != nil {
 				log.Debug().Uint64("block", vLog.BlockNumber).Str("chain", s.chain).Msg("waiting for block timestamp")
@@ -258,7 +278,7 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 				}
 			}
 			tWait = tMin
-			s.outLogs <- vLog
+			s.outLogs <- Log{vLog, span}
 		}
 	}
 }
