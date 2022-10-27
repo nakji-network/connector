@@ -8,7 +8,6 @@ import (
 	nakjicommon "github.com/nakji-network/connector/common"
 	"github.com/nakji-network/connector/kafkautils"
 
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/rs/zerolog/log"
 )
 
@@ -57,7 +56,7 @@ func (c *Connector) Start() {
 	}
 }
 
-func (c *Connector) parse(msgType kafkautils.MsgType, vLog types.Log) *kafkautils.Message {
+func (c *Connector) parse(msgType kafkautils.MsgType, vLog ethereum.Log) *kafkautils.Message {
 	address := vLog.Address.String()
 	if c.Contracts[address] == nil {
 		log.Info().Str("address", address).Msg("Event from unsupported address")
@@ -76,13 +75,13 @@ func (c *Connector) parse(msgType kafkautils.MsgType, vLog types.Log) *kafkautil
 		return nil
 	}
 
-	bt, err := c.Sub.GetBlockTime(context.Background(), vLog)
+	bt, err := c.Sub.GetBlockTime(context.Background(), vLog.Log)
 	if err != nil {
 		log.Error().Str("contract name", contractName).Err(err).Msg("Failed to retrieve timestamp")
 	}
 	timestamp := nakjicommon.UnixToTimestampPb(int64(bt * 1000))
 
-	msg := eventParser.Get(abiEvent.Name, contractAbi, vLog, timestamp)
+	msg := eventParser.Get(abiEvent.Name, contractAbi, vLog.Log, timestamp)
 	if msg == nil {
 		log.Warn().Str("event", abiEvent.Name).Msg("event is not defined")
 		return nil

@@ -47,6 +47,7 @@ func InitTracerProvider(ctx context.Context, host, name, version, env string, sa
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}))
 
+	log.Info().Msg("initialized the trace provider")
 	return tp, err
 }
 
