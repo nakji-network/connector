@@ -2,13 +2,11 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
@@ -22,7 +20,7 @@ type IConfig interface {
 	GetUint64(string) uint64
 }
 
-var ErrInvalidConfig = errors.New("invalid config")
+var ErrInvalidConfig = fmt.Errorf("invalid config")
 var conf *viper.Viper
 
 func GetConfig() *viper.Viper {
@@ -36,17 +34,6 @@ func GetConfig() *viper.Viper {
 // SetConfigDefaults sets defaults on a Viper instance.
 func SetConfigDefaults(v *viper.Viper) {
 	v.SetDefault("debug", false)
-	//v.SetDefault("kafka.url", )
-	//v.SetDefault("kafka.topic", "Topic1")
-	v.SetDefault("ethereum.kafka.txID", "ethereum-source")
-	v.SetDefault("streamserver.addr", ":8080")
-	v.SetDefault("websocket.wcReplicationFactor", 1)
-	v.SetDefault("websocket.hcReplicationFactor", 1)
-	v.SetDefault("websocket.maxIdleSecond", 60)
-	v.SetDefault("prometheus.metrics.port", 9999)
-	v.SetDefault("websocket.coolDownSecond", 30)
-	v.SetDefault("websocket.lruCacheSize", 128)
-	v.SetDefault("websocket.allowedBlocksBehind", 3)
 	v.SetDefault("prometheus.metrics.port", 9999)
 	v.SetDefault("protoregistry.host", "localhost:9191")
 }
@@ -124,7 +111,7 @@ func InitConfig() *viper.Viper {
 	//SetFlags(v)
 
 	if err = ValidateConfig(v); err != nil {
-		panic(fmt.Errorf("%s \n", err))
+		panic(err)
 	}
 
 	InitLogging(v)
@@ -136,30 +123,6 @@ func InitConfig() *viper.Viper {
 func setupExternalConfig(v *viper.Viper) {
 	externalCfgFile := os.Getenv("EXTERNAL_CONFIG")
 	v.SetConfigFile(externalCfgFile)
-}
-
-func GetAllowedBlocksBehind() uint64 {
-	return conf.GetUint64("websocket.allowedBlocksBehind")
-}
-
-func GetLRUCacheSize() int {
-	return conf.GetInt("websocket.lruCacheSize")
-}
-
-func GetWCReplicationFactor() int {
-	return conf.GetInt("websocket.wcReplicationFactor")
-}
-
-func GetHCReplicationFactor() int {
-	return conf.GetInt("websocket.hcReplicationFactor")
-}
-
-func GetMaxIdleSecond() time.Duration {
-	return conf.GetDuration("websocket.maxIdleSecond")
-}
-
-func GetCoolDownSecond() time.Duration {
-	return conf.GetDuration("websocket.coolDownSecond")
 }
 
 func GetPrometheusMetricsPort() int {
