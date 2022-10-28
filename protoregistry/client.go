@@ -3,6 +3,7 @@ package protoregistry
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"io/ioutil"
@@ -20,7 +21,7 @@ import (
 	"github.com/nakji-network/connector/kafkautils"
 )
 
-var errProtoFound = fmt.Errorf("proto file found")
+var errProtoFound = errors.New("proto file found")
 
 // TopicTypes is a map where topic schemas are keys and proto.Message are values.
 type TopicTypes map[string]proto.Message
@@ -191,5 +192,5 @@ func getProtoFilePath(baseDir string, tpm *TopicProtoMsg) (string, error) {
 		return "", err
 	}
 
-	return "", fmt.Errorf("proto file not found")
+	return "", errors.New("proto file not found")
 }
