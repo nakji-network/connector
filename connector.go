@@ -48,6 +48,7 @@ func NewConnector(options ...Option) (*Connector, error) {
 	conf.SetDefault("protoregistry.host", "localhost:9191")
 	conf.SetDefault("trace.sample.ratio", 0.2)
 	conf.SetDefault("trace.host.grpc", "localhost:4317")
+	conf.SetDefault("trace.host.timeout", "2s")
 
 	rpcMap := make(map[string]chain.RPCs)
 	err := conf.UnmarshalKey("rpcs", &rpcMap)
@@ -90,7 +91,9 @@ func NewConnector(options ...Option) (*Connector, error) {
 	log.Info().Str("addr", "0.0.0.0:8080").Msg("healthcheck listening on /live and /ready")
 
 	//	Initialize trace provider
-	_, err = monitor.InitTracerProvider(context.TODO(), conf.GetString("trace.host.grpc"), c.id(), c.manifest.Version.String(), string(c.env), conf.GetFloat64("trace.sample.ratio"))
+	ctx, cancel := context.WithTimeout(context.TODO(), conf.GetDuration("trace.host.timeout"))
+	defer cancel()
+	_, err = monitor.InitTracerProvider(ctx, conf.GetString("trace.host.grpc"), c.id(), c.manifest.Version.String(), string(c.env), conf.GetFloat64("trace.sample.ratio"))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to initialize trace provider")
 	}
@@ -128,14 +131,15 @@ func (c *Connector) id() string {
 
 // Subscribe subscribes to a list of topics.
 // To read:
-// 	sub, err := connector.Subscribe(...)
-// 	for msg := range sub {
-// 		// do something with the msg
-// 		// print(msg)
 //
-// 		// commit to kafka to acknowledge receipt
-// 		consumer.CommitMessage(msg.Message)
-// 	}
+//	sub, err := connector.Subscribe(...)
+//	for msg := range sub {
+//		// do something with the msg
+//		// print(msg)
+//
+//		// commit to kafka to acknowledge receipt
+//		consumer.CommitMessage(msg.Message)
+//	}
 func (c *Connector) Subscribe(topics []kafkautils.Topic, overrideOpts ...kafka.ConfigMap) (<-chan kafkautils.Message, error) {
 	if !c.consumerStarted {
 		err := c.startConsumer(overrideOpts...)
@@ -300,9 +304,9 @@ func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.
 	return tt
 }
 
-//	initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
-//	It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
-//  NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
+//		initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
+//		It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
+//	 NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
 func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 
 	c.startProducer()
