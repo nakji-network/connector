@@ -21,24 +21,13 @@ import (
 	"github.com/nakji-network/connector/kafkautils"
 )
 
-var (
-	errProtoFound    = errors.New("proto file found")
-	errProtoNotFound = errors.New("proto file not found")
-)
-
-type Client struct {
-	host string
-}
-
-func NewClient(host string) *Client {
-	return &Client{host}
-}
+var errProtoFound = errors.New("proto file found")
 
 // TopicTypes is a map where topic schemas are keys and proto.Message are values.
 type TopicTypes map[string]proto.Message
 
 // RegisterDynamicTopics registers kafka topic and protobuf type mappings
-func (c *Client) RegisterDynamicTopics(topicTypes map[string]proto.Message, msgType kafkautils.MsgType) error {
+func RegisterDynamicTopics(host string, topicTypes map[string]proto.Message, msgType kafkautils.MsgType) error {
 	tpmList := buildTopicProtoMsgs(topicTypes, msgType)
 
 	err := generateDescriptorFiles(tpmList)
@@ -46,7 +35,7 @@ func (c *Client) RegisterDynamicTopics(topicTypes map[string]proto.Message, msgT
 		log.Fatal().Err(err).Msg("failed to generate descriptor files")
 	}
 
-	u := url.URL{Scheme: "http", Host: c.host, Path: "/v1/register"}
+	u := url.URL{Scheme: "http", Host: host, Path: "/v1/register"}
 
 	b, err := json.Marshal(tpmList)
 	if err != nil {
@@ -203,5 +192,5 @@ func getProtoFilePath(baseDir string, tpm *TopicProtoMsg) (string, error) {
 		return "", err
 	}
 
-	return "", errProtoNotFound
+	return "", errors.New("proto file not found")
 }

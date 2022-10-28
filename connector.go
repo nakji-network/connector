@@ -23,16 +23,16 @@ type Connector struct {
 	*kafkautils.Consumer
 	*kafkautils.Producer
 
-	consumerStarted bool
-	env             kafkautils.Env
-	kafkaUrl        string
-	manifest        *manifest
-	producerStarted bool
+	consumerStarted   bool
+	env               kafkautils.Env
+	kafkaUrl          string
+	manifest          *manifest
+	producerStarted   bool
+	protoRegistryHost string
 
-	RPCMap           map[string]chain.RPCs
-	Config           *viper.Viper
-	Health           healthcheck.Handler
-	ProtoRegistryCli *protoregistry.Client
+	RPCMap map[string]chain.RPCs
+	Config *viper.Viper
+	Health healthcheck.Handler
 
 	//	EventSink can be used to push incoming on-chain events to Kafka.
 	// 	All kafka Produce logic will be handled under the hood.
@@ -55,16 +55,13 @@ func NewConnector(options ...Option) (*Connector, error) {
 		return nil, fmt.Errorf("could not load RPC list from config file")
 	}
 
-	// Create a proto registry client to dynamically load protobuf definitions.
-	prc := protoregistry.NewClient(conf.GetString("protoregistry.host"))
-
 	c := &Connector{
-		manifest:         LoadManifest(),
-		env:              kafkautils.Env(conf.GetString("kafka.env")),
-		kafkaUrl:         conf.GetString("kafka.url"),
-		Health:           healthcheck.NewHandler(),
-		RPCMap:           rpcMap,
-		ProtoRegistryCli: prc,
+		manifest:          LoadManifest(),
+		env:               kafkautils.Env(conf.GetString("kafka.env")),
+		kafkaUrl:          conf.GetString("kafka.url"),
+		Health:            healthcheck.NewHandler(),
+		RPCMap:            rpcMap,
+		protoRegistryHost: conf.GetString("protoregistry.host"),
 	}
 
 	parseOptions(c, options...)
@@ -287,7 +284,7 @@ func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.M
 
 	tt := c.buildTopicTypes(msgType, protos...)
 
-	err := c.ProtoRegistryCli.RegisterDynamicTopics(tt, msgType)
+	err := protoregistry.RegisterDynamicTopics(c.protoRegistryHost, tt, msgType)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to register dynamic topics")
 	}
