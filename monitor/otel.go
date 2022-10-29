@@ -6,8 +6,10 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
@@ -21,7 +23,7 @@ const DefaultTracerName = "github.com/nakji-network/connector/monitor"
 func InitTracerProvider(ctx context.Context, host, name, version, env string, sampleRatio float64) (*trace.TracerProvider, error) {
 	conn, err := grpc.DialContext(ctx, host, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
-		log.Error().Err(err).Msg("failed to connect to opentelemetry")
+		log.Error().Err(err).Msg("failed to connect to opentelemetry collector")
 		return nil, err
 	}
 
@@ -45,10 +47,27 @@ func InitTracerProvider(ctx context.Context, host, name, version, env string, sa
 		trace.WithResource(r),
 	)
 	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}))
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
 	log.Info().Msg("initialized the trace provider")
 	return tp, err
+}
+
+func InitMeterProvider(ctx context.Context, host string) (*metric.MeterProvider, error) {
+	conn, err := grpc.DialContext(ctx, host, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	if err != nil {
+		log.Error().Err(err).Msg("failed to connect to opentelemetry collector")
+		return nil, err
+	}
+	exp, err := otlpmetricgrpc.New(context.TODO(), otlpmetricgrpc.WithGRPCConn(conn))
+	if err != nil {
+		log.Error().Err(err).Msg("failed to set up metric exporter")
+		return nil, err
+	}
+
+	meterProvider := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(exp)))
+
+	return meterProvider, nil
 }
 
 // newResource returns a resource describing this service.
