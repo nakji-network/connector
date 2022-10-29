@@ -20,7 +20,7 @@ type Consumer struct {
 }
 
 const (
-	spanName          = "kafka -> end"
+	spanName          = "kafka -> consumer"
 	consumerEventName = "consume kafka message"
 )
 
@@ -63,7 +63,7 @@ func NewConsumer(brokers string, groupID string, overrideOpts ...kafka.ConfigMap
 	return &c, nil
 }
 
-//	Messages returns receiver channel for Kafka messages.
+// Messages returns receiver channel for Kafka messages.
 func (c *Consumer) Messages() <-chan Message {
 	return c.messages
 }
@@ -109,6 +109,7 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 					),
 				)
 				span.AddEvent(consumerEventName)
+				ctx = trace.ContextWithSpan(ctx, span)
 
 				k, err := ParseKey(e.Key)
 				if err != nil {
@@ -132,7 +133,7 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 					Topic:    t,
 					Key:      k,
 					ProtoMsg: protoMsg,
-					Span:     span,
+					Context:  ctx,
 				}
 
 			case kafka.PartitionEOF:

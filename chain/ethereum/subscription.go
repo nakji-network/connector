@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	spanName  = "connector -> kafka"
-	eventName = "receive event log"
+	spanName      = "connector -> kafka"
+	blockSpanName = "block time -> connector"
+	eventName     = "receive event log"
 )
 
 type ISubscription interface {
@@ -62,10 +63,10 @@ type Subscription struct {
 
 type Log struct {
 	types.Log
-	Span trace.Span
+	Context context.Context
 }
 
-//	NewSubscription	connects to given endpoints and subscribes to blockchain.
+// NewSubscription	connects to given endpoints and subscribes to blockchain.
 func NewSubscription(client *ethclient.Client, chain string, addresses []common.Address) (*Subscription, error) {
 	s := Subscription{
 		addresses:        addresses,
@@ -147,7 +148,7 @@ func (s *Subscription) Logs() <-chan Log {
 	return s.outLogs
 }
 
-//	Close closes subscriptions and open channels.
+// Close closes subscriptions and open channels.
 func (s *Subscription) Close() {
 	log.Info().Str("chain", s.chain).Msg("shutting down subscription")
 	s.done <- true
@@ -162,7 +163,7 @@ func (s *Subscription) Close() {
 	close(s.outErr)
 }
 
-//	getBlockTimeFromChain queries the blockchain and retrieves block time.
+// getBlockTimeFromChain queries the blockchain and retrieves block time.
 func (s *Subscription) getBlockTimeFromChain(ctx context.Context, blockHash common.Hash) (uint64, error) {
 	header, err := s.client.HeaderByHash(ctx, blockHash)
 	if err != nil {
@@ -174,7 +175,7 @@ func (s *Subscription) getBlockTimeFromChain(ctx context.Context, blockHash comm
 	return header.Time, nil
 }
 
-//	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
+// subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeHeaders(ctx context.Context) {
 	log.Debug().Str("chain", s.chain).Msg("subscribing to headers..")
 
@@ -221,7 +222,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 	}
 }
 
-//	subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
+// subscribeHeaders subscribes each websocket client to block headers and extracts block time as each header is received.
 func (s *Subscription) subscribeLogs(ctx context.Context) {
 	log.Debug().Str("chain", s.chain).Msg("subscribing to event logs..")
 
@@ -258,32 +259,55 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			return
 
 		case vLog := <-s.inLogs:
+			// end time for RPC latency
+			rcvTime := time.Now()
+			// Add rcvTime to baggage as connector latency observation
+			spanCtx := monitor.NewLatencyBaggage(context.TODO(), monitor.LatencyConnectorKey, rcvTime)
+
+			// Connector latency span begin
 			tr := monitor.CreateTracer(monitor.DefaultTracerName)
-			_, span := monitor.StartSpan(
-				context.TODO(),
+
+			spanCtx, span := monitor.StartSpan(
+				spanCtx,
 				tr,
 				spanName,
 				trace.WithSpanKind(trace.SpanKindProducer),
 			)
 			span.AddEvent(eventName)
-			_, err := s.GetBlockTime(ctx, vLog)
+
+			blockTime, err := s.GetBlockTime(ctx, vLog)
 			for err != nil {
 				log.Debug().Uint64("block", vLog.BlockNumber).Str("chain", s.chain).Msg("waiting for block timestamp")
 				time.Sleep(tWait)
 				tWait *= 2
-				_, err = s.GetBlockTime(ctx, vLog)
+				blockTime, err = s.GetBlockTime(ctx, vLog)
 				if tWait > tMax {
 					log.Warn().Uint64("block", vLog.BlockNumber).Str("chain", s.chain).Msg("block timestamp not available")
 					break
 				}
 			}
 			tWait = tMin
-			s.outLogs <- Log{vLog, span}
+
+			// RPC latency span - derived from block time & rcvTime
+			if blockTime > 0 {
+				spanStart := time.UnixMilli(int64(blockTime * 1000))
+				_, rpcSpan := monitor.StartSpan(
+					spanCtx,
+					tr,
+					blockSpanName,
+					trace.WithTimestamp(spanStart),
+				)
+				rpcSpan.End(trace.WithTimestamp(rcvTime))
+				// Add block time to baggage as rpc latency observation
+				spanCtx = monitor.NewLatencyBaggage(spanCtx, monitor.LatencyRpcKey, spanStart)
+			}
+
+			s.outLogs <- Log{vLog, spanCtx}
 		}
 	}
 }
 
-//	isRetryable checks the websocket disconnection error to see if connector can recover.
+// isRetryable checks the websocket disconnection error to see if connector can recover.
 func isRetryable(err error) bool {
 	// error 1: Message timed out
 	// error 2: Connection reset by peer
