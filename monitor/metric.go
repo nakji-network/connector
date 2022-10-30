@@ -59,16 +59,46 @@ func ExportLatencyMetrics(ctx context.Context, meter metric.Meter, connName stri
 	bag := baggage.FromContext(ctx)
 
 	// Extract latency observations from baggage
-	for key, _ := range latencyObservations {
+	for key := range latencyObservations {
 		latencyObservations[key] = getBaggageLatency(bag, key)
 	}
 
+	// Get observations
+	rpcObservation := latencyObservations[LatencyRpcKey]
+	connObservation := latencyObservations[LatencyConnectorKey]
+	kafkaProduceObservation := latencyObservations[LatencyKafkaProduceKey]
+	ssConsumeObservation := latencyObservations[LatencyStreamserverConsumeKey]
+
 	// Derive latency metrics from observations
-	latencyMetrics[rpcLatency] = latencyObservations[LatencyConnectorKey] - latencyObservations[LatencyRpcKey]
-	latencyMetrics[connLatency] = latencyObservations[LatencyKafkaProduceKey] - latencyObservations[LatencyConnectorKey]
-	latencyMetrics[coreLatency] = latencyObservations[LatencyStreamserverConsumeKey] - latencyObservations[LatencyKafkaProduceKey]
-	latencyMetrics[systemLatency] = latencyObservations[LatencyStreamserverConsumeKey] - latencyObservations[LatencyConnectorKey]
-	latencyMetrics[e2eLatency] = latencyObservations[LatencyStreamserverConsumeKey] - latencyObservations[LatencyRpcKey]
+	if rpcObservation > 0 && connObservation > 0 {
+		latencyMetrics[rpcLatency] = connObservation - rpcObservation
+	} else {
+		latencyMetrics[rpcLatency] = 0
+	}
+
+	if kafkaProduceObservation > 0 && connObservation > 0 {
+		latencyMetrics[connLatency] = kafkaProduceObservation - connObservation
+	} else {
+		latencyMetrics[connLatency] = 0
+	}
+
+	if ssConsumeObservation > 0 && kafkaProduceObservation > 0 {
+		latencyMetrics[coreLatency] = ssConsumeObservation - kafkaProduceObservation
+	} else {
+		latencyMetrics[coreLatency] = 0
+	}
+
+	if ssConsumeObservation > 0 && connObservation > 0 {
+		latencyMetrics[systemLatency] = ssConsumeObservation - connObservation
+	} else {
+		latencyMetrics[systemLatency] = 0
+	}
+
+	if ssConsumeObservation > 0 && rpcObservation > 0 {
+		latencyMetrics[e2eLatency] = ssConsumeObservation - rpcObservation
+	} else {
+		latencyMetrics[e2eLatency] = 0
+	}
 
 	// Record histograms
 	for key, hist := range histograms {
@@ -76,7 +106,7 @@ func ExportLatencyMetrics(ctx context.Context, meter metric.Meter, connName stri
 		if latency > 0 {
 			histogramMetric, err := meter.SyncInt64().Histogram(
 				hist.name,
-				instrument.WithUnit("milliseconds"),
+				instrument.WithUnit("microseconds"),
 				instrument.WithDescription(hist.description),
 			)
 			if err != nil {
@@ -90,9 +120,13 @@ func ExportLatencyMetrics(ctx context.Context, meter metric.Meter, connName stri
 func getBaggageLatency(bag baggage.Baggage, key string) int64 {
 	mem := bag.Member(key)
 	ts, err := strconv.Atoi(mem.Value())
+	// Baggage key does not exist
 	if err != nil {
-		log.Error().Err(err).Str("key", mem.String()).Msg("Unable to convert ts baggage string to int")
 		return 0
 	}
-	return int64(ts)
+	if ts > 0 {
+		return int64(ts)
+	} else {
+		return 0
+	}
 }

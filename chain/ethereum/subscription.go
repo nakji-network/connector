@@ -259,14 +259,13 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			return
 
 		case vLog := <-s.inLogs:
-			// end time for RPC latency
+			// Time that logs are received. This is the end time for RPC latency
 			rcvTime := time.Now()
 			// Add rcvTime to baggage as connector latency observation
 			spanCtx := monitor.NewLatencyBaggage(context.TODO(), monitor.LatencyConnectorKey, rcvTime)
 
 			// Connector latency span begin
 			tr := monitor.CreateTracer(monitor.DefaultTracerName)
-
 			spanCtx, span := monitor.StartSpan(
 				spanCtx,
 				tr,

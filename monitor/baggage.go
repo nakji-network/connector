@@ -12,7 +12,7 @@ import (
 // NewLatencyBaggage takes in baggage member key and value, creates baggage, adds to context, and returns context.
 func NewLatencyBaggage(ctx context.Context, memberKey string, memberVal time.Time) context.Context {
 	// Baggage member values must be strings
-	latencyStr := strconv.Itoa(int(memberVal.UnixMilli()))
+	latencyStr := strconv.Itoa(int(memberVal.UnixMicro()))
 
 	bag := baggage.FromContext(ctx)
 
