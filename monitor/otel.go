@@ -59,7 +59,7 @@ func InitMeterProvider(ctx context.Context, host string) (*metric.MeterProvider,
 		log.Error().Err(err).Msg("failed to connect to opentelemetry collector")
 		return nil, err
 	}
-	exp, err := otlpmetricgrpc.New(context.TODO(), otlpmetricgrpc.WithGRPCConn(conn))
+	exp, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithGRPCConn(conn))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to set up metric exporter")
 		return nil, err

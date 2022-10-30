@@ -54,7 +54,7 @@ var (
 	}
 )
 
-// Export latency metrics from baggage in ctx
+// ExportLatencyMetrics exports latency metrics from baggage in ctx
 func ExportLatencyMetrics(ctx context.Context, meter metric.Meter, connName string, env string) {
 	bag := baggage.FromContext(ctx)
 
