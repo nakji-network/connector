@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/ethereum/go-ethereum v1.10.15
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d
-	github.com/nakji-network/connector v0.0.1-beta.1.0.20221027083407-3fa3261b49b6
+	github.com/nakji-network/connector v0.0.1-beta.1.0.20221030024423-a801338780fd
 	github.com/rs/zerolog v1.28.0
 	go.opentelemetry.io/otel/trace v1.11.1
 )
@@ -52,9 +52,13 @@ require (
 	github.com/tklauser/numcpus v0.2.2 // indirect
 	go.opentelemetry.io/otel v1.11.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.11.1 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric v0.33.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.33.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.11.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.1 // indirect
+	go.opentelemetry.io/otel/metric v0.33.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.11.1 // indirect
+	go.opentelemetry.io/otel/sdk/metric v0.33.0 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	golang.org/x/crypto v0.0.0-20211215165025-cf75a172585e // indirect
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d // indirect
