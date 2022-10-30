@@ -128,14 +128,15 @@ func (c *Connector) id() string {
 
 // Subscribe subscribes to a list of topics.
 // To read:
-// 	sub, err := connector.Subscribe(...)
-// 	for msg := range sub {
-// 		// do something with the msg
-// 		// print(msg)
 //
-// 		// commit to kafka to acknowledge receipt
-// 		consumer.CommitMessage(msg.Message)
-// 	}
+//	sub, err := connector.Subscribe(...)
+//	for msg := range sub {
+//		// do something with the msg
+//		// print(msg)
+//
+//		// commit to kafka to acknowledge receipt
+//		consumer.CommitMessage(msg.Message)
+//	}
 func (c *Connector) Subscribe(topics []kafkautils.Topic, overrideOpts ...kafka.ConfigMap) (<-chan kafkautils.Message, error) {
 	if !c.consumerStarted {
 		err := c.startConsumer(overrideOpts...)
@@ -300,9 +301,9 @@ func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.
 	return tt
 }
 
-//	initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
-//	It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
-//  NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
+//		initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
+//		It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
+//	 NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
 func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 
 	c.startProducer()
@@ -364,7 +365,7 @@ func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 				msg.TopicStr = c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
 			}
 
-			c.Producer.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil, msg.Span)
+			c.Producer.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil, msg.Context)
 		}
 	}
 }

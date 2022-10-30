@@ -22,8 +22,8 @@ type Producer struct {
 	closed   bool
 }
 
-//	Producer config flags and their default values can be found here
-//	https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
+// Producer config flags and their default values can be found here
+// https://docs.confluent.io/platform/current/installation/configuration/producer-configs.html
 const (
 	//	the producer will wait for up to the given delay to allow other records to be sent so that the sends can be batched together
 	KafkaProducerLingerMS = 1000
@@ -240,8 +240,8 @@ func (p *Producer) SendOffsetsToTransaction(position kafka.TopicPartitions, c *C
 }
 
 // WriteAndCommit writes for transactional producers, committing transaction after each write
-func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message, span trace.Span) error {
-	err := p.ProduceMsg(topic.String(), value, key, nil, span)
+func (p *Producer) WriteAndCommit(topic Topic, key []byte, value proto.Message, ctx context.Context) error {
+	err := p.ProduceMsg(topic.String(), value, key, nil, ctx)
 	if err != nil {
 		return err
 	}
@@ -294,7 +294,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 					msg.Topic,
 					msg.Key.Bytes(),
 					msg.ProtoMsg,
-					msg.Span,
+					msg.Context,
 				)
 
 				if err != nil {
@@ -314,7 +314,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 					msg.Topic,
 					msg.Key.Bytes(),
 					msg.ProtoMsg,
-					msg.Span,
+					msg.Context,
 				)
 
 				if err != nil {
@@ -329,7 +329,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 				continue
 			}
 
-			err := p.ProduceMsg(msg.Topic.String(), msg.ProtoMsg, msg.Key.Bytes(), nil, msg.Span)
+			err := p.ProduceMsg(msg.Topic.String(), msg.ProtoMsg, msg.Key.Bytes(), nil, msg.Context)
 			if err != nil {
 				log.Error().Err(err).
 					Str("topic", msg.Topic.String()).
@@ -355,9 +355,9 @@ func (p *Producer) MakeQueueTransactionSink() chan *Message {
 	return sink
 }
 
-//	ProduceMsg sends single protobuf message to a Kafka topic. It can optionally include a key and timestamp.
-//	An event channel can be provided for Kafka event response.
-func (p *Producer) ProduceMsg(topic string, msg proto.Message, key []byte, delivery chan kafka.Event, span trace.Span) error {
+// ProduceMsg sends single protobuf message to a Kafka topic. It can optionally include a key and timestamp.
+// An event channel can be provided for Kafka event response.
+func (p *Producer) ProduceMsg(topic string, msg proto.Message, key []byte, delivery chan kafka.Event, ctx context.Context) error {
 	if p.closed {
 		return fmt.Errorf("cannot produce message, producer is already closed")
 	}
@@ -378,9 +378,14 @@ func (p *Producer) ProduceMsg(topic string, msg proto.Message, key []byte, deliv
 		kafkaMsg.Key = key
 	}
 
-	if span != nil {
+	if ctx != nil {
+		// Get span from context
+		span := trace.SpanFromContext(ctx)
+
+		// Add kafka produce time to baggage
+		ctx = monitor.NewLatencyBaggage(ctx, monitor.LatencyKafkaProduceKey, time.Now())
+
 		// Inject trace metadata into kafka message headers
-		ctx := trace.ContextWithSpan(context.TODO(), span)
 		otel.GetTextMapPropagator().Inject(ctx, monitor.NewMessageCarrier(kafkaMsg))
 
 		span.AddEvent(producerEventName)
@@ -390,8 +395,8 @@ func (p *Producer) ProduceMsg(topic string, msg proto.Message, key []byte, deliv
 	return p.Produce(kafkaMsg, delivery)
 }
 
-//	ListenDeliveryChan processes acknowledgements from Kafka broker upon Produce() calls.
-//	Using this method will disable global event processing by the producer.
+// ListenDeliveryChan processes acknowledgements from Kafka broker upon Produce() calls.
+// Using this method will disable global event processing by the producer.
 func (p *Producer) ListenDeliveryChan(delivery chan kafka.Event) {
 	for e := range delivery {
 		switch ev := e.(type) {
