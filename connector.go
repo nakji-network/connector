@@ -48,6 +48,7 @@ func NewConnector(options ...Option) (*Connector, error) {
 	conf.SetDefault("protoregistry.host", "localhost:9191")
 	conf.SetDefault("trace.sample.ratio", 0.2)
 	conf.SetDefault("trace.host.grpc", "localhost:4317")
+	conf.SetDefault("trace.host.timeout", "2s")
 
 	rpcMap := make(map[string]chain.RPCs)
 	err := conf.UnmarshalKey("rpcs", &rpcMap)
@@ -90,7 +91,9 @@ func NewConnector(options ...Option) (*Connector, error) {
 	log.Info().Str("addr", "0.0.0.0:8080").Msg("healthcheck listening on /live and /ready")
 
 	//	Initialize trace provider
-	_, err = monitor.InitTracerProvider(context.TODO(), conf.GetString("trace.host.grpc"), c.id(), c.manifest.Version.String(), string(c.env), conf.GetFloat64("trace.sample.ratio"))
+	ctx, cancel := context.WithTimeout(context.TODO(), conf.GetDuration("trace.host.timeout"))
+	defer cancel()
+	_, err = monitor.InitTracerProvider(ctx, conf.GetString("trace.host.grpc"), c.id(), c.manifest.Version.String(), string(c.env), conf.GetFloat64("trace.sample.ratio"))
 	if err != nil {
 		log.Error().Err(err).Msg("failed to initialize trace provider")
 	}
