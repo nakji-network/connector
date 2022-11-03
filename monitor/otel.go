@@ -54,7 +54,7 @@ func InitTracerProvider(ctx context.Context, host, name, version, env string, sa
 	return tp, err
 }
 
-func InitMeterProvider(ctx context.Context, host string) (*metric.MeterProvider, error) {
+func InitMeterProvider(ctx context.Context, host, name, version, env string) (*metric.MeterProvider, error) {
 	conn, err := grpc.DialContext(ctx, host, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
 		log.Error().Err(err).Msg("failed to connect to opentelemetry collector")
@@ -66,7 +66,14 @@ func InitMeterProvider(ctx context.Context, host string) (*metric.MeterProvider,
 		return nil, err
 	}
 
-	meterProvider := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(exp)))
+	// Set up a resource
+	r, err := newResource(name, version, env)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to set up a resource")
+		return nil, err
+	}
+
+	meterProvider := metric.NewMeterProvider(metric.WithReader(metric.NewPeriodicReader(exp)), metric.WithResource(r))
 	global.SetMeterProvider(meterProvider)
 
 	return meterProvider, nil
