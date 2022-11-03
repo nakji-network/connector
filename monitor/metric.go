@@ -134,7 +134,7 @@ func getBaggageLatency(bag baggage.Baggage, key string) int64 {
 }
 
 // ApiUsageMiddleware can be added to gin engine to export metrics for api calls by origin, token, and path.
-func ApiUsageMiddleware(name string, meter metric.Meter) gin.HandlerFunc {
+func ApiUsageMiddleware(meter metric.Meter) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		// Start: staging-only
 		// These debug messages are only for testing how traefik interacts with requests
@@ -145,7 +145,7 @@ func ApiUsageMiddleware(name string, meter metric.Meter) gin.HandlerFunc {
 		// End: staging-only
 		origin, token := getApiAuthHeaders(ctx)
 		path := ctx.Request.URL.EscapedPath()
-		counter, err := meter.SyncInt64().Counter(name)
+		counter, err := meter.SyncInt64().Counter("usage.api", instrument.WithDescription("Total number of API requests"))
 		if err != nil {
 			log.Err(err).Msg("Unable to record usage observation")
 		}
