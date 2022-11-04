@@ -3,9 +3,7 @@ package monitor
 import (
 	"context"
 	"strconv"
-	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
@@ -131,47 +129,4 @@ func getBaggageLatency(bag baggage.Baggage, key string) int64 {
 	} else {
 		return 0
 	}
-}
-
-// ApiUsageMiddleware can be added to gin engine to export metrics for api calls by env, origin, token, and path.
-func ApiUsageMiddleware(meter metric.Meter, env string) gin.HandlerFunc {
-	return func(ctx *gin.Context) {
-		// Start: staging-only
-		// These debug messages are only for testing how traefik interacts with requests
-		// These will be removed
-		log.Debug().Str("authorization", ctx.Request.Header.Get("Authorization")).Str("origin", ctx.Request.Header.Get("Origin")).Msg("auth headers")
-		log.Debug().Str("clientIP", ctx.ClientIP()).Str("remoteIP", ctx.RemoteIP()).Str("remoteaddr", ctx.Request.RemoteAddr).Msg("request IP and addr")
-		log.Debug().Str("referer", ctx.Request.Referer()).Msg("Referer")
-		// End: staging-only
-		origin, token := getApiAuthHeaders(ctx)
-		path := ctx.Request.URL.EscapedPath()
-		counter, err := meter.SyncInt64().Counter("usage.api", instrument.WithDescription("Total number of API requests"))
-		if err != nil {
-			log.Err(err).Msg("Unable to record usage observation")
-		}
-		counter.Add(context.TODO(), 1, attribute.String("origin", origin), attribute.String("token", token), attribute.String("path", path), attribute.String("env", env))
-
-		// serve the request to the next middleware
-		ctx.Next()
-	}
-}
-
-// getApiAuthHeaders gets Origin and Authorization headers to be used as attributes in usage metrics.
-// Note that while getApiAuthHeaders checks that both Origin and Authorization headers are set, it does
-// not validate that the returned origin and token exist in the database.
-func getApiAuthHeaders(ctx *gin.Context) (string, string) {
-	origin := ctx.Request.Header.Get("Origin")
-	token := ctx.Request.Header.Get("Authorization")
-	if origin == "" || token == "" {
-		return "anonymous", "none"
-	}
-
-	// Remove Bearer prefix
-	if strings.HasPrefix(token, "Bearer ") {
-		token = strings.TrimPrefix(token, "Bearer ")
-	} else {
-		return "anonymous", "none"
-	}
-
-	return origin, token
 }
