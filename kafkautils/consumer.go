@@ -10,6 +10,7 @@ import (
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/baggage"
 	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -20,7 +21,7 @@ type Consumer struct {
 }
 
 const (
-	spanName          = "kafka -> consumer"
+	spanName          = "kafka -> streamserver"
 	consumerEventName = "consume kafka message"
 )
 
@@ -91,6 +92,7 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 
 				// Extract tracing info from message
 				ctx := otel.GetTextMapPropagator().Extract(context.Background(), monitor.NewMessageCarrier(e))
+				bag := baggage.FromContext(ctx)
 
 				tr := monitor.CreateTracer(monitor.DefaultTracerName)
 				_, span := monitor.StartSpan(
@@ -109,7 +111,6 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 					),
 				)
 				span.AddEvent(consumerEventName)
-				ctx = trace.ContextWithSpan(ctx, span)
 
 				k, err := ParseKey(e.Key)
 				if err != nil {
@@ -133,7 +134,8 @@ func (c *Consumer) kafkaEventToProtoPipe(in <-chan kafka.Event) <-chan Message {
 					Topic:    t,
 					Key:      k,
 					ProtoMsg: protoMsg,
-					Context:  ctx,
+					Span:     span,
+					Baggage:  bag,
 				}
 
 			case kafka.PartitionEOF:

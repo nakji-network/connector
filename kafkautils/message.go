@@ -1,9 +1,9 @@
 package kafkautils
 
 import (
-	"context"
-
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -16,7 +16,8 @@ type Message struct {
 	Key      Key
 	MsgType  MsgType
 	ProtoMsg proto.Message
-	Context  context.Context
+	Span     trace.Span
+	Baggage  baggage.Baggage
 }
 
 type MsgType string
