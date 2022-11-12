@@ -11,13 +11,13 @@ import (
 	"github.com/nakji-network/connector/kafkautils"
 	"github.com/nakji-network/connector/monitor"
 	"github.com/nakji-network/connector/protoregistry"
-	"go.opentelemetry.io/otel/baggage"
-	"go.opentelemetry.io/otel/trace"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"github.com/heptiolabs/healthcheck"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
 
