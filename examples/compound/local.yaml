@@ -7,4 +7,4 @@ kafka:
 rpcs:
   ethereum:
     full:
-      - your infura websocket endpoint here
+      - your rpc URLs here
