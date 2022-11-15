@@ -1,0 +1,22 @@
+# For development only
+
+version: '3'
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper
+    restart: always
+    ports:
+      - '2181:2181'
+  kafka:
+    image: wurstmeister/kafka
+    restart: always
+    ports:
+      - '9092:9092'
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: 127.0.0.1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+      KAFKA_DELETE_TOPIC_ENABLE: 'true'
+      KAFKA_CREATE_TOPICS: "Topic1:1:1,Topic2:1:1:compact"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
