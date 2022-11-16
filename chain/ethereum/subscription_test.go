@@ -43,7 +43,7 @@ func TestClose(t *testing.T) {
 		headers: make(chan *types.Header),
 		client:  &ethclient.Client{},
 		inLogs:  make(chan types.Log),
-		outLogs: make(chan types.Log),
+		outLogs: make(chan Log),
 		inErr:   make(chan error),
 		outErr:  make(chan error),
 	}

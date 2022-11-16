@@ -16,6 +16,8 @@ import (
 	"github.com/heptiolabs/healthcheck"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -187,7 +189,7 @@ func (c *Connector) SubscribeExample() error {
 func (c *Connector) ProduceMessage(namespace, subject string, msgType kafkautils.MsgType, msg proto.Message) error {
 	topic := c.generateTopicFromProto(msgType, msg)
 	key := kafkautils.NewKey(namespace, subject)
-	return c.ProduceMsg(topic.String(), msg, key.Bytes(), nil, nil)
+	return c.ProduceMsg(context.TODO(), topic.String(), msg, key.Bytes(), nil)
 }
 
 // ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
@@ -367,8 +369,11 @@ func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 			if msg.TopicStr == "" {
 				msg.TopicStr = c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
 			}
+			// Get trace data from message
+			ctx := trace.ContextWithSpan(context.TODO(), msg.Span)
+			ctx = baggage.ContextWithBaggage(ctx, msg.Baggage)
 
-			c.Producer.ProduceMsg(msg.TopicStr, msg.ProtoMsg, nil, nil, msg.Context)
+			c.Producer.ProduceMsg(ctx, msg.TopicStr, msg.ProtoMsg, nil, nil)
 		}
 	}
 }

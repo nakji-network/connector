@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/rs/zerolog/log"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -63,7 +64,8 @@ type Subscription struct {
 
 type Log struct {
 	types.Log
-	Context context.Context
+	Span    trace.Span
+	Baggage baggage.Baggage
 }
 
 // NewSubscription	connects to given endpoints and subscribes to blockchain.
@@ -262,7 +264,7 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			// Time that logs are received. This is the end time for RPC latency
 			rcvTime := time.Now()
 			// Add rcvTime to baggage as connector latency observation
-			spanCtx := monitor.NewLatencyBaggage(context.TODO(), monitor.LatencyConnectorKey, rcvTime)
+			spanCtx, bag := monitor.NewLatencyBaggage(ctx, monitor.LatencyConnectorKey, rcvTime)
 
 			// Connector latency span begin
 			tr := monitor.CreateTracer(monitor.DefaultTracerName)
@@ -298,10 +300,10 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 				)
 				rpcSpan.End(trace.WithTimestamp(rcvTime))
 				// Add block time to baggage as rpc latency observation
-				spanCtx = monitor.NewLatencyBaggage(spanCtx, monitor.LatencyRpcKey, spanStart)
+				spanCtx, bag = monitor.NewLatencyBaggage(spanCtx, monitor.LatencyRpcKey, spanStart)
 			}
 
-			s.outLogs <- Log{vLog, spanCtx}
+			s.outLogs <- Log{vLog, span, bag}
 		}
 	}
 }
