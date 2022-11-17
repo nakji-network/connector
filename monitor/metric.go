@@ -29,121 +29,109 @@ const (
 	LatencyStreamserverConsumeKey = "latencyssconsume"
 )
 
-// ExportLatencyMetrics exports latency metrics from baggage in ctx
-
-func RecordRpcLatency(ctx context.Context, meter metric.Meter, connName string, env string) {
-	rpcLatency := latencyHistogram{
-		meter:                meter,
-		histogramName:        "latency.rpc.histogram",
-		histogramDescription: "Latency from block time to connector reception",
-		connectorName:        connName,
-		env:                  env,
-		value:                0,
+// ExportLatencyMetrics exports all latency metrics from baggage in ctx
+func ExportLatencyMetrics(ctx context.Context, meter metric.Meter, connectorNmae string, env string) {
+	latency := latencyHistogram{
+		meter:         meter,
+		connectorName: connectorName,
+		env:           env,
+		value:         0,
 	}
+
+	recordRpcLatency(ctx, latency)
+	recordConnectorLatency(ctx, latency)
+	recordCoreLatency(ctx, latency)
+	recordSystemLatency(ctx, latency)
+	recordEndLatency(ctx, latency)
+}
+
+func recordRpcLatency(ctx context.Context, latency latencyHistogram) {
+	latency.histogramName = "latency.rpc.histogram"
+	latency.histogramDescription = "Latency from block time to connector reception"
 
 	rpcObservation := getBaggageLatency(ctx, LatencyRpcKey)
 	connObservation := getBaggageLatency(ctx, LatencyConnectorKey)
 
 	if rpcObservation > 0 && connObservation > 0 {
-		rpcLatency.value = connObservation - rpcObservation
+		latency.value = connObservation - rpcObservation
 	}
 
-	recordLatencyHistogram(ctx, rpcLatency)
+	recordLatencyHistogram(ctx, latency)
 }
 
-func RecordConnectorLatency(ctx context.Context, meter metric.Meter, connName string, env string) {
-	connectorLatency := latencyHistogram{
-		meter:                meter,
-		histogramName:        "latency.connector.histogram",
-		histogramDescription: "Latency from connector reception to kafka produce",
-		connectorName:        connName,
-		env:                  env,
-		value:                0,
-	}
+func recordConnectorLatency(ctx context.Context, latency latencyHistogram) {
+	latency.histogramName = "latency.connector.histogram"
+	latency.histogramDescription = "Latency from connector reception to kafka produce"
 
 	connObservation := getBaggageLatency(ctx, LatencyConnectorKey)
 	kafkaProduceObservation := getBaggageLatency(ctx, LatencyKafkaProduceKey)
 
 	if kafkaProduceObservation > 0 && connObservation > 0 {
-		connectorLatency.value = kafkaProduceObservation - connObservation
+		latency.value = kafkaProduceObservation - connObservation
 	}
 
-	recordLatencyHistogram(ctx, connectorLatency)
+	recordLatencyHistogram(ctx, latency)
 }
 
-func RecordCoreLatency(ctx context.Context, meter metric.Meter, connName string, env string) {
-	coreLatency := latencyHistogram{
-		meter:                meter,
-		histogramName:        "latency.core.histogram",
-		histogramDescription: "Latency from kafka to streamserver",
-		connectorName:        connName,
-		env:                  env,
-		value:                0,
-	}
+func recordCoreLatency(ctx context.Context, latency latencyHistogram) {
+	latency.histogramName = "latency.core.histogram"
+	latency.histogramDescription = "Latency from kafka to streamserver"
 
 	kafkaProduceObservation := getBaggageLatency(ctx, LatencyKafkaProduceKey)
 	ssConsumeObservation := getBaggageLatency(ctx, LatencyStreamserverConsumeKey)
 
 	if ssConsumeObservation > 0 && kafkaProduceObservation > 0 {
-		coreLatency.value = ssConsumeObservation - kafkaProduceObservation
+		latency.value = ssConsumeObservation - kafkaProduceObservation
 	}
 
-	recordLatencyHistogram(ctx, coreLatency)
+	recordLatencyHistogram(ctx, latency)
 }
 
-func RecordSystemLatency(ctx context.Context, meter metric.Meter, connName string, env string) {
-	systemLatency := latencyHistogram{
-		meter:                meter,
-		histogramName:        "latency.system.histogram",
-		histogramDescription: "Latency from connector to streamserver",
-		connectorName:        connName,
-		env:                  env,
-		value:                0,
-	}
+func recordSystemLatency(ctx context.Context, latency latencyHistogram) {
+	latency.histogramName = "latency.system.histogram"
+	latency.histogramDescription = "Latency from connector to streamserver"
 
 	connObservation := getBaggageLatency(ctx, LatencyConnectorKey)
 	ssConsumeObservation := getBaggageLatency(ctx, LatencyStreamserverConsumeKey)
 
 	if ssConsumeObservation > 0 && connObservation > 0 {
-		systemLatency.value = ssConsumeObservation - connObservation
+		latency.value = ssConsumeObservation - connObservation
 	}
 
-	recordLatencyHistogram(ctx, systemLatency)
+	recordLatencyHistogram(ctx, latency)
 }
 
-func RecordEndLatency(ctx context.Context, meter metric.Meter, connName string, env string) {
-	e2eLatency := latencyHistogram{
-		meter:                meter,
-		histogramName:        "latency.e2e.histogram",
-		histogramDescription: "Latency from block time to streamserver",
-		connectorName:        connName,
-		env:                  env,
-		value:                0,
-	}
+func recordEndLatency(ctx context.Context, latency latencyHistogram) {
+	latency.histogramName = "latency.e2e.histogram"
+	latency.histogramDescription = "Latency from block time to streamserver"
 
 	rpcObservation := getBaggageLatency(ctx, LatencyRpcKey)
 	ssConsumeObservation := getBaggageLatency(ctx, LatencyStreamserverConsumeKey)
 
 	if ssConsumeObservation > 0 && rpcObservation > 0 {
-		e2eLatency.value = ssConsumeObservation - rpcObservation
+		latency.value = ssConsumeObservation - rpcObservation
 	}
 
-	recordLatencyHistogram(ctx, e2eLatency)
+	recordLatencyHistogram(ctx, latency)
 }
 
-func recordLatencyHistogram(ctx context.Context, obs latencyHistogram) {
-	if obs.value > 0 {
+func recordLatencyHistogram(ctx context.Context, latency latencyHistogram) {
+	if latency.value > 0 {
 		// Convert latency from microseconds to float milliseconds
-		latency := float64(obs.value) / 1000
-		histogram, err := obs.meter.SyncFloat64().Histogram(
-			obs.histogramName,
+		latencyValue := float64(latency.value) / 1000
+		histogram, err := latency.meter.SyncFloat64().Histogram(
+			latency.histogramName,
 			instrument.WithUnit(unit.Milliseconds),
-			instrument.WithDescription(obs.histogramDescription),
+			instrument.WithDescription(latency.histogramDescription),
 		)
 		if err != nil {
-			log.Error().Err(err).Str("connector", obs.connectorName).Str("histogram", obs.histogramName).Msg("Unable to create histogram")
+			log.Error().Err(err).Str("connector", latency.connectorName).Str("histogram", latency.histogramName).Msg("Unable to create histogram")
 		}
-		histogram.Record(ctx, latency, attribute.String("Connector", obs.connectorName), attribute.String("Env", obs.env))
+		attributes := []attribute.KeyValue{
+			attribute.String("Connector", latency.connectorName),
+			attribute.String("Env", latency.env),
+		}
+		histogram.Record(ctx, latencyValue, attributes...)
 	}
 }
 
