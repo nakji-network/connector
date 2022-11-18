@@ -13,7 +13,6 @@ import (
 )
 
 type latencyHistogram struct {
-	meter                metric.Meter
 	histogramName        string
 	histogramDescription string
 	connectorName        string
@@ -30,24 +29,26 @@ const (
 )
 
 // ExportLatencyMetrics exports all latency metrics from baggage in ctx
-func ExportLatencyMetrics(ctx context.Context, meter metric.Meter, connectorNmae string, env string) {
-	latency := latencyHistogram{
-		meter:         meter,
-		connectorName: connectorName,
-		env:           env,
-		value:         0,
+func ExportLatencyMetrics(ctx context.Context, meter metric.Meter, connectorName string, env string) {
+	for _, latency := range []latencyHistogram{
+		getRPCLatency(ctx, connectorName, env),
+		getConnectorLatency(ctx, connectorName, env),
+		getCoreLatency(ctx, connectorName, env),
+		getSystemLatency(ctx, connectorName, env),
+		getEndLatency(ctx, connectorName, env),
+	} {
+		recordLatencyHistogram(ctx, meter, latency)
 	}
-
-	recordRpcLatency(ctx, latency)
-	recordConnectorLatency(ctx, latency)
-	recordCoreLatency(ctx, latency)
-	recordSystemLatency(ctx, latency)
-	recordEndLatency(ctx, latency)
 }
 
-func recordRpcLatency(ctx context.Context, latency latencyHistogram) {
-	latency.histogramName = "latency.rpc.histogram"
-	latency.histogramDescription = "Latency from block time to connector reception"
+func getRPCLatency(ctx context.Context, connectorName string, env string) latencyHistogram {
+	latency := latencyHistogram{
+		histogramName:        "latency.rpc.histogram",
+		histogramDescription: "Latency from block time to connector reception",
+		connectorName:        connectorName,
+		env:                  env,
+		value:                0,
+	}
 
 	rpcObservation := getBaggageLatency(ctx, LatencyRpcKey)
 	connObservation := getBaggageLatency(ctx, LatencyConnectorKey)
@@ -56,12 +57,17 @@ func recordRpcLatency(ctx context.Context, latency latencyHistogram) {
 		latency.value = connObservation - rpcObservation
 	}
 
-	recordLatencyHistogram(ctx, latency)
+	return latency
 }
 
-func recordConnectorLatency(ctx context.Context, latency latencyHistogram) {
-	latency.histogramName = "latency.connector.histogram"
-	latency.histogramDescription = "Latency from connector reception to kafka produce"
+func getConnectorLatency(ctx context.Context, connectorName string, env string) latencyHistogram {
+	latency := latencyHistogram{
+		histogramName:        "latency.connector.histogram",
+		histogramDescription: "Latency from connector reception to kafka produce",
+		connectorName:        connectorName,
+		env:                  env,
+		value:                0,
+	}
 
 	connObservation := getBaggageLatency(ctx, LatencyConnectorKey)
 	kafkaProduceObservation := getBaggageLatency(ctx, LatencyKafkaProduceKey)
@@ -70,12 +76,17 @@ func recordConnectorLatency(ctx context.Context, latency latencyHistogram) {
 		latency.value = kafkaProduceObservation - connObservation
 	}
 
-	recordLatencyHistogram(ctx, latency)
+	return latency
 }
 
-func recordCoreLatency(ctx context.Context, latency latencyHistogram) {
-	latency.histogramName = "latency.core.histogram"
-	latency.histogramDescription = "Latency from kafka to streamserver"
+func getCoreLatency(ctx context.Context, connectorName string, env string) latencyHistogram {
+	latency := latencyHistogram{
+		histogramName:        "latency.core.histogram",
+		histogramDescription: "Latency from kafka to streamserver",
+		connectorName:        connectorName,
+		env:                  env,
+		value:                0,
+	}
 
 	kafkaProduceObservation := getBaggageLatency(ctx, LatencyKafkaProduceKey)
 	ssConsumeObservation := getBaggageLatency(ctx, LatencyStreamserverConsumeKey)
@@ -84,12 +95,17 @@ func recordCoreLatency(ctx context.Context, latency latencyHistogram) {
 		latency.value = ssConsumeObservation - kafkaProduceObservation
 	}
 
-	recordLatencyHistogram(ctx, latency)
+	return latency
 }
 
-func recordSystemLatency(ctx context.Context, latency latencyHistogram) {
-	latency.histogramName = "latency.system.histogram"
-	latency.histogramDescription = "Latency from connector to streamserver"
+func getSystemLatency(ctx context.Context, connectorName string, env string) latencyHistogram {
+	latency := latencyHistogram{
+		histogramName:        "latency.system.histogram",
+		histogramDescription: "Latency from connector to streamserver",
+		connectorName:        connectorName,
+		env:                  env,
+		value:                0,
+	}
 
 	connObservation := getBaggageLatency(ctx, LatencyConnectorKey)
 	ssConsumeObservation := getBaggageLatency(ctx, LatencyStreamserverConsumeKey)
@@ -98,12 +114,17 @@ func recordSystemLatency(ctx context.Context, latency latencyHistogram) {
 		latency.value = ssConsumeObservation - connObservation
 	}
 
-	recordLatencyHistogram(ctx, latency)
+	return latency
 }
 
-func recordEndLatency(ctx context.Context, latency latencyHistogram) {
-	latency.histogramName = "latency.e2e.histogram"
-	latency.histogramDescription = "Latency from block time to streamserver"
+func getEndLatency(ctx context.Context, connectorName string, env string) latencyHistogram {
+	latency := latencyHistogram{
+		histogramName:        "latency.e2e.histogram",
+		histogramDescription: "Latency from block time to streamserver",
+		connectorName:        connectorName,
+		env:                  env,
+		value:                0,
+	}
 
 	rpcObservation := getBaggageLatency(ctx, LatencyRpcKey)
 	ssConsumeObservation := getBaggageLatency(ctx, LatencyStreamserverConsumeKey)
@@ -112,14 +133,14 @@ func recordEndLatency(ctx context.Context, latency latencyHistogram) {
 		latency.value = ssConsumeObservation - rpcObservation
 	}
 
-	recordLatencyHistogram(ctx, latency)
+	return latency
 }
 
-func recordLatencyHistogram(ctx context.Context, latency latencyHistogram) {
+func recordLatencyHistogram(ctx context.Context, meter metric.Meter, latency latencyHistogram) {
 	if latency.value > 0 {
 		// Convert latency from microseconds to float milliseconds
 		latencyValue := float64(latency.value) / 1000
-		histogram, err := latency.meter.SyncFloat64().Histogram(
+		histogram, err := meter.SyncFloat64().Histogram(
 			latency.histogramName,
 			instrument.WithUnit(unit.Milliseconds),
 			instrument.WithDescription(latency.histogramDescription),
