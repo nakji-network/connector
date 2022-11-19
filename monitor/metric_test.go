@@ -1,6 +1,7 @@
 package monitor
 
 import (
+	"context"
 	"testing"
 
 	"go.opentelemetry.io/otel/baggage"
@@ -8,7 +9,7 @@ import (
 
 func TestGetBaggageLatency(t *testing.T) {
 	type args struct {
-		bag baggage.Baggage
+		ctx context.Context
 		key string
 	}
 	tests := []struct {
@@ -51,15 +52,16 @@ func TestGetBaggageLatency(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := getBaggageLatency(tt.args.bag, tt.args.key); got != tt.want {
+			if got := getBaggageLatency(tt.args.ctx, tt.args.key); got != tt.want {
 				t.Errorf("Get() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-func createBaggage(key string, value string) baggage.Baggage {
+func createBaggage(key string, value string) context.Context {
 	member, _ := baggage.NewMember(key, value)
 	bag, _ := baggage.New(member)
-	return bag
+	ctx := baggage.ContextWithBaggage(context.TODO(), bag)
+	return ctx
 }
