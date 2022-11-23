@@ -35,6 +35,8 @@ type ISubscription interface {
 	Done() <-chan bool
 	Err() <-chan error
 	GetBlockTime(context.Context, types.Log) (uint64, error)
+	TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, error)
+	TransactionSender(ctx context.Context, tx *types.Transaction, block common.Hash, index uint) (common.Address, error)
 	Headers() <-chan *types.Header
 	Logs() <-chan Log
 	Subscribe(context.Context)
@@ -58,6 +60,7 @@ type Subscription struct {
 	inErr             chan error         //	Aggregate channel for errors coming from the chain
 	outErr            chan error         //	Aggregate channel for errors sent to connector
 	cache             *lru.Cache         //	Store timestamps for block numbers
+	txCache           *lru.Cache         // Store transactions for hashes
 	isHeaderRequired  bool               //	Flag to release block headers, if user wants them
 	latestBlockNumber *big.Int
 }
@@ -88,6 +91,13 @@ func NewSubscription(client *ethclient.Client, chain string, addresses []common.
 		return nil, err
 	}
 	s.cache = cache
+
+	// Create cache for storing transactions
+	txCache, err := lru.New(1280)
+	if err != nil {
+		return nil, err
+	}
+	s.txCache = txCache
 
 	signal.Notify(s.interrupt, os.Interrupt)
 
@@ -198,11 +208,11 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 			return
 
 		case err := <-hs.Err():
-			log.Error().Err(err).Msg("header subscription failed")
-
 			if isRetryable(err) {
+				log.Warn().Err(err).Msg("header subscription failed, retrying...")
 				go s.subscribeHeaders(ctx)
 			} else {
+				log.Error().Err(err).Msg("header subscription failed")
 				s.outErr <- err
 			}
 			return
@@ -251,11 +261,11 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			return
 
 		case err = <-s.inErr:
-			log.Error().Err(err).Msg("event log subscription failed")
-
 			if isRetryable(err) {
+				log.Warn().Err(err).Msg("event log subscription failed, retrying...")
 				go s.subscribeLogs(ctx)
 			} else {
+				log.Error().Err(err).Msg("event log subscription failed")
 				s.outErr <- err
 			}
 			return
@@ -323,4 +333,20 @@ func isRetryable(err error) bool {
 		strings.Contains(err.Error(), "1006") ||
 		strings.Contains(err.Error(), "EOF") ||
 		strings.Contains(err.Error(), "1001")
+}
+
+func (s *Subscription) TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, error) {
+	if tx, ok := s.txCache.Get(hash.Hex()); ok {
+		return tx.(*types.Transaction), nil
+	}
+	tx, _, err := s.client.TransactionByHash(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+	s.txCache.Add(hash.Hex(), tx)
+	return tx, nil
+}
+
+func (s *Subscription) TransactionSender(ctx context.Context, tx *types.Transaction, block common.Hash, index uint) (common.Address, error) {
+	return s.client.TransactionSender(ctx, tx, block, index)
 }
