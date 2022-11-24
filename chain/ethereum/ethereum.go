@@ -30,6 +30,7 @@ type ETHClient interface {
 
 type Connector struct {
 	*connector.Connector
+	*ethclient.Client
 	Sub ISubscription
 }
 
@@ -66,8 +67,9 @@ func NewConnector(ctx context.Context, addresses []common.Address, chain string)
 	}
 
 	return &Connector{
-		c,
-		sub,
+		Connector: c,
+		Client:    client,
+		Sub:       sub,
 	}
 }
 
@@ -110,10 +112,10 @@ func ChunkedSubscribeFilterLogs(ctx context.Context, client ETHClient, addresses
 	return subs, nil
 }
 
-//	ChunkedFilterLogs queries the blockchain for past events in batches.
-//	It slices addresses and total number of blocks with pre-defined batch size.
-//	The results are later fed into a log chan that was provided by the caller.
-//	Failed query intervals are fed into another channel to allow the caller to retry later.
+// ChunkedFilterLogs queries the blockchain for past events in batches.
+// It slices addresses and total number of blocks with pre-defined batch size.
+// The results are later fed into a log chan that was provided by the caller.
+// Failed query intervals are fed into another channel to allow the caller to retry later.
 func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, failedQueries []ethereum.FilterQuery) ([]ethereum.FilterQuery, error) {
 	// Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
 	const (
@@ -170,7 +172,7 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 	return failedQueries, err
 }
 
-//	Backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
+// Backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
 func Backfill(ctx context.Context, client *ethclient.Client, addresses []common.Address, logs chan types.Log, fromBlock uint64, toBlock uint64) error {
 	defer close(logs)
 
@@ -207,4 +209,26 @@ func Backfill(ctx context.Context, client *ethclient.Client, addresses []common.
 		}
 	}
 	return nil
+}
+
+// BackfillFrom queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
+// * fromBlock > 0 && numBlocks > 0 => Backfill from fromBlock to fromBlock+numBlocks
+// * fromBlock > 0 && numBlocks = 0 => Backfill from fromBlock to current latest block
+// * fromBlock = 0 && numBlocks > 0 => Backfill last numBlocks blocks
+func BackfillFrom(ctx context.Context, client *ethclient.Client, addresses []common.Address, logs chan types.Log, fromBlock uint64, numBlocks uint64) error {
+	switch {
+	case fromBlock > 0 && numBlocks > 0:
+		return Backfill(ctx, client, addresses, logs, fromBlock, fromBlock+numBlocks)
+	case fromBlock > 0 && numBlocks == 0:
+		return Backfill(ctx, client, addresses, logs, fromBlock, 0)
+	case fromBlock == 0 && numBlocks > 0:
+		toBlock, err := client.BlockNumber(ctx)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to get block number")
+			return err
+		}
+		return Backfill(ctx, client, addresses, logs, toBlock-numBlocks, toBlock)
+	default:
+		return nil
+	}
 }
