@@ -30,8 +30,8 @@ type ETHClient interface {
 
 type Connector struct {
 	*connector.Connector
-	*ethclient.Client
-	Sub ISubscription
+	Client *ethclient.Client
+	Sub    ISubscription
 }
 
 // NewConnector returns an evm-compatible connector connected to websockets RPC
