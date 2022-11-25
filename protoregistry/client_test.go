@@ -1,17 +1,21 @@
 package protoregistry
 
 import (
-	"bytes"
-	"io/ioutil"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
-	"path/filepath"
+	"reflect"
 	"testing"
 
-	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/types/descriptorpb"
 
 	"github.com/nakji-network/connector/protoregistry/prtest"
 )
+
+const host = "127.0.0.1:12345"
 
 var topicTypes = map[string]proto.Message{
 	"nakji.protoregistry.0_0_0.prtest_mint":            &prtest.Mint{},
@@ -21,58 +25,38 @@ var topicTypes = map[string]proto.Message{
 	"nakji.protoregistry.0_0_0.prtest_liquidateborrow": &prtest.LiquidateBorrow{},
 }
 
-var desc []byte
-
-func readDescriptor() {
-	wd, err := os.Getwd()
-	if err != nil {
-		log.Fatal().Err(err).Msg("error getting pwd (required for relative imports)")
-	}
-
-	var file string
-
-	err = filepath.WalkDir(wd, func(path string, info os.DirEntry, err error) error {
-		if err != nil {
-			log.Error().Err(err).Msg("WalkDirFunc error")
-			return err
-		}
-
-		if !info.IsDir() && filepath.Base(path) == "prtest.proto.desc" {
-			file = path
-			log.Debug().Str("path", path).Msg("found the proto file")
-			return errProtoFound
-		}
-
-		return nil
-	})
-
-	if err != nil && err != errProtoFound {
-		log.Fatal().Err(err).Msg("error finding prtest.proto.desc")
-	}
-
-	desc, err = ioutil.ReadFile(file)
-	if err != nil {
-		log.Fatal().Err(err).Msg("error reading prtest.proto.desc")
-	}
-}
-
-func setup() {
-	readDescriptor()
-}
-
 func TestMain(m *testing.M) {
-	setup()
 	exitCode := m.Run()
 	os.Exit(exitCode)
 }
 
+func TestRegisterDynamicTopics(t *testing.T) {
+	handler := http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {})
+
+	s, err := NewTestServerWithURL(host, handler)
+	defer s.Close()
+	if err != nil {
+		t.Fatalf("failed to create new test server: %v", err)
+	}
+
+	err = RegisterDynamicTopics(host, topicTypes, "cmd")
+	if err != nil {
+		t.Fatalf("failed to register dynamic topics: %v", err)
+	}
+
+}
+
 func Test_buildTopicProtoMsgs(t *testing.T) {
+	toFileDescriptorProtoFunc := func(message proto.Message) *descriptorpb.FileDescriptorProto {
+		return protodesc.ToFileDescriptorProto(message.ProtoReflect().Descriptor().ParentFile())
+	}
+
 	want := map[string]TopicProtoMsg{
-		"prtest.Mint":            {"sys", "nakji.protoregistry.0_0_0.prtest_mint", "prtest.Mint", desc},
-		"prtest.Redeem":          {"sys", "nakji.protoregistry.0_0_0.prtest_redeem", "prtest.Redeem", desc},
-		"prtest.Borrow":          {"sys", "nakji.protoregistry.0_0_0.prtest_borrow", "prtest.Borrow", desc},
-		"prtest.RepayBorrow":     {"sys", "nakji.protoregistry.0_0_0.prtest_repayborrow", "prtest.RepayBorrow", desc},
-		"prtest.LiquidateBorrow": {"sys", "nakji.protoregistry.0_0_0.prtest_liquidateborrow", "prtest.LiquidateBorrow", desc},
+		"prtest.Mint":            {"sys", "nakji.protoregistry.0_0_0.prtest_mint", "prtest.Mint", toFileDescriptorProtoFunc(&prtest.Mint{}), nil},
+		"prtest.Redeem":          {"sys", "nakji.protoregistry.0_0_0.prtest_redeem", "prtest.Redeem", toFileDescriptorProtoFunc(&prtest.Redeem{}), nil},
+		"prtest.Borrow":          {"sys", "nakji.protoregistry.0_0_0.prtest_borrow", "prtest.Borrow", toFileDescriptorProtoFunc(&prtest.Borrow{}), nil},
+		"prtest.RepayBorrow":     {"sys", "nakji.protoregistry.0_0_0.prtest_repayborrow", "prtest.RepayBorrow", toFileDescriptorProtoFunc(&prtest.RepayBorrow{}), nil},
+		"prtest.LiquidateBorrow": {"sys", "nakji.protoregistry.0_0_0.prtest_liquidateborrow", "prtest.LiquidateBorrow", toFileDescriptorProtoFunc(&prtest.LiquidateBorrow{}), nil},
 	}
 
 	got := buildTopicProtoMsgs(topicTypes, "sys")
@@ -91,26 +75,25 @@ func Test_buildTopicProtoMsgs(t *testing.T) {
 		if tpm.TopicName != want[tpm.ProtoMsgName].TopicName {
 			t.Errorf("TopicName got = %v, want = %v", tpm.TopicName, want[tpm.ProtoMsgName].TopicName)
 		}
+		if tpm.Descriptor != nil {
+			t.Errorf("Descriptor got = %v, want = %v", tpm.Descriptor, nil)
+		}
+		if !reflect.DeepEqual(tpm.FileDescriptorProto, want[tpm.ProtoMsgName].FileDescriptorProto) {
+			t.Errorf("FileDescriptorProto got = %v, want = %v", tpm.FileDescriptorProto, want[tpm.ProtoMsgName].FileDescriptorProto)
+		}
 	}
 }
 
-func Test_generateDescriptorFiles(t *testing.T) {
-	tpmList := []*TopicProtoMsg{
-		{"sys", "nakji.protoregistry.0_0_0.prtest_mint", "prtest.Mint", nil},
-		{"sys", "nakji.protoregistry.0_0_0.prtest_redeem", "prtest.Redeem", nil},
-		{"sys", "nakji.protoregistry.0_0_0.prtest_borrow", "prtest.Borrow", nil},
-		{"sys", "nakji.protoregistry.0_0_0.prtest_repayborrow", "prtest.RepayBorrow", nil},
-		{"sys", "nakji.protoregistry.0_0_0.prtest_liquidateborrow", "prtest.LiquidateBorrow", nil},
-	}
-
-	err := generateDescriptorFiles(tpmList)
-	if err != nil {
-		t.Fatalf("failed to generate descriptor files %v", err)
-	}
-
-	for _, tpm := range tpmList {
-		if bytes.Compare(tpm.Descriptor, desc) != 0 {
-			t.Errorf("expected Descriptor got = %v, want = %v", tpm.Descriptor, desc)
+func NewTestServerWithURL(URL string, handler http.Handler) (*httptest.Server, error) {
+	ts := httptest.NewUnstartedServer(handler)
+	if URL != "" {
+		l, err := net.Listen("tcp", URL)
+		if err != nil {
+			return nil, err
 		}
+		ts.Listener.Close()
+		ts.Listener = l
 	}
+	ts.Start()
+	return ts, nil
 }

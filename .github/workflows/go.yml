@@ -45,7 +45,7 @@ jobs:
     - uses: ./.github/actions/setup-go
       with:
         go-version: ${{ matrix.go }}
-    - run: go build ./...
+    - run: go build -ldflags "-X google.golang.org/protobuf/reflect/protoregistry.conflictPolicy=ignore" ./...
 
   test:
     strategy:
@@ -65,4 +65,4 @@ jobs:
     - uses: ./.github/actions/setup-go
       with:
         go-version: ${{ matrix.go }}
-    - run: go test -race -cover ./...
+    - run: go test -ldflags "-X google.golang.org/protobuf/reflect/protoregistry.conflictPolicy=ignore" -race -cover ./...
