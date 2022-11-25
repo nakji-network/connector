@@ -366,14 +366,73 @@ func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 			}
 
 			hasMessage = true
-			if msg.TopicStr == "" {
-				msg.TopicStr = c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
-			}
+			topic := c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
 			// Get trace data from message
 			ctx := trace.ContextWithSpan(context.TODO(), msg.Span)
 			ctx = baggage.ContextWithBaggage(ctx, msg.Baggage)
 
-			c.Producer.ProduceMsg(ctx, msg.TopicStr, msg.ProtoMsg, nil, nil)
+			c.Producer.ProduceMsg(ctx, topic, msg.ProtoMsg, nil, nil)
 		}
 	}
+}
+
+func (c *Connector) ProduceMessages(messages []*kafkautils.Message) error {
+	if !c.producerStarted {
+		c.startProducer()
+	}
+
+	err := c.Producer.BeginTransaction()
+	if err != nil {
+		log.Error().Err(err).
+			Str("error code", err.(kafka.Error).Code().String()).
+			Msg("failed to begin transaction")
+
+		return err
+	}
+
+	for _, msg := range messages {
+
+		topic := c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
+		// Get trace data from message
+		ctx := trace.ContextWithSpan(context.TODO(), msg.Span)
+		ctx = baggage.ContextWithBaggage(ctx, msg.Baggage)
+
+		c.Producer.ProduceMsg(ctx, topic, msg.ProtoMsg, nil, nil)
+	}
+
+retry:
+	err = c.Producer.CommitTransaction(context.TODO())
+	if err != nil {
+		if err.(kafka.Error).IsRetriable() {
+			log.Warn().Err(err).
+				Str("error code", err.(kafka.Error).Code().String()).
+				Msg("failed to commit transactions, retrying..")
+			goto retry
+
+		} else if err.(kafka.Error).Code() == kafka.ErrProducerFenced {
+			c.Producer.Close()
+
+		} else if err.(kafka.Error).Code() == kafka.ErrTimedOut {
+			log.Warn().Err(err).
+				Str("error code", err.(kafka.Error).Code().String()).
+				Msg("failed to commit transactions, timed out")
+
+		} else {
+			log.Error().Err(err).
+				Str("error code", err.(kafka.Error).Code().String()).
+				Msg("failed to commit transactions, aborting..")
+
+			err = c.Producer.AbortTransaction(context.TODO())
+			if err != nil {
+				log.Fatal().Err(err).
+					Str("error code", err.(kafka.Error).Code().String()).
+					Msg("failed to abort transaction, killing producer..")
+			}
+		}
+		return err
+	}
+
+	log.Debug().Msg("successfully committed transactions")
+
+	return nil
 }
