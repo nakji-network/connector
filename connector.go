@@ -36,7 +36,7 @@ type Connector struct {
 	Config *viper.Viper
 	Health healthcheck.Handler
 
-	//	DEPRECATED, please use ProduceWithTransaction instead
+	//	DEPRECATED, this property will be removed in a future release. Please use ProduceWithTransaction instead.
 	//	EventSink can be used to push incoming on-chain events to Kafka.
 	// 	All kafka Produce logic will be handled under the hood.
 	EventSink chan<- *kafkautils.Message
@@ -186,14 +186,16 @@ func (c *Connector) SubscribeExample() error {
 	return nil
 }
 
-// ProduceMessage sends protobuf to message queue with a Topic and Key.
+//	DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
+//	ProduceMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceMessage(namespace, subject string, msgType kafkautils.MsgType, msg proto.Message) error {
 	topic := c.generateTopicFromProto(msgType, msg)
 	key := kafkautils.NewKey(namespace, subject)
 	return c.ProduceMsg(context.TODO(), topic.String(), msg, key.Bytes(), nil)
 }
 
-// ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
+//	DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
+//	ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msgType kafkautils.MsgType, msg proto.Message) error {
 	if !c.producerStarted {
 		err := c.startProducer()
@@ -307,7 +309,7 @@ func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.
 	return tt
 }
 
-//	DEPRECATED, please use ProduceWithTransaction instead
+//	DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
 //	initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
 //	It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
 //	NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
