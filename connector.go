@@ -376,7 +376,7 @@ func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 	}
 }
 
-func (c *Connector) ProduceMessages(messages []*kafkautils.Message) error {
+func (c *Connector) ProduceWithTransaction(messages []*kafkautils.Message) error {
 	if !c.producerStarted {
 		c.startProducer()
 	}
