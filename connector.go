@@ -36,6 +36,7 @@ type Connector struct {
 	Config *viper.Viper
 	Health healthcheck.Handler
 
+	//	DEPRECATED, please use ProduceWithTransaction instead
 	//	EventSink can be used to push incoming on-chain events to Kafka.
 	// 	All kafka Produce logic will be handled under the hood.
 	EventSink chan<- *kafkautils.Message
@@ -306,74 +307,89 @@ func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.
 	return tt
 }
 
-//		initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
-//		It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
-//	 NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
+//	DEPRECATED, please use ProduceWithTransaction instead
+//	initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
+//	It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
+//	NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
 func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 
 	c.startProducer()
 	ticker := time.NewTicker(time.Second)
-	hasMessage := false
+
+	var messages []*kafkautils.Message
 
 	for {
 		select {
 		case <-ticker.C:
-
-		retry:
-			if hasMessage {
-				err := c.Producer.CommitTransaction(context.TODO())
-				if err != nil {
-					if err.(kafka.Error).IsRetriable() {
-						log.Warn().Err(err).
-							Str("error code", err.(kafka.Error).Code().String()).
-							Msg("failed to commit transactions, retrying..")
-						goto retry
-
-					} else if err.(kafka.Error).Code() == kafka.ErrProducerFenced {
-						c.Producer.Close()
-
-					} else if err.(kafka.Error).Code() == kafka.ErrTimedOut {
-						log.Warn().Err(err).
-							Str("error code", err.(kafka.Error).Code().String()).
-							Msg("failed to commit transactions, timed out")
-
-					} else {
-						log.Error().Err(err).
-							Str("error code", err.(kafka.Error).Code().String()).
-							Msg("failed to commit transactions, aborting..")
-
-						err = c.Producer.AbortTransaction(context.TODO())
-						if err != nil {
-							log.Fatal().Err(err).
-								Str("error code", err.(kafka.Error).Code().String()).
-								Msg("failed to abort transaction, killing producer..")
-						}
-					}
-				}
-
-				log.Debug().Msg("successfully committed transactions")
-
-				hasMessage = false
+			if len(messages) > 0 {
+				c.ProduceWithTransaction(messages)
+				messages = make([]*kafkautils.Message, 0)
 			}
 		case msg := <-input:
-			if !hasMessage {
-				err := c.Producer.BeginTransaction()
-				if err != nil {
-					log.Fatal().Err(err).
-						Str("error code", err.(kafka.Error).Code().String()).
-						Msg("failed to begin transaction")
-				}
-			}
-
-			hasMessage = true
-			if msg.TopicStr == "" {
-				msg.TopicStr = c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
-			}
-			// Get trace data from message
-			ctx := trace.ContextWithSpan(context.TODO(), msg.Span)
-			ctx = baggage.ContextWithBaggage(ctx, msg.Baggage)
-
-			c.Producer.ProduceMsg(ctx, msg.TopicStr, msg.ProtoMsg, nil, nil)
+			messages = append(messages, msg)
 		}
 	}
+}
+
+//	ProduceWithTransaction wraps a slice of messages in a kafka transaction.
+//	Produced messages will be pushed to kafka altogether or fail all at once.
+func (c *Connector) ProduceWithTransaction(messages []*kafkautils.Message) error {
+	if !c.producerStarted {
+		c.startProducer()
+	}
+
+	err := c.Producer.BeginTransaction()
+	if err != nil {
+		log.Error().Err(err).
+			Str("error code", err.(kafka.Error).Code().String()).
+			Msg("failed to begin transaction")
+
+		return err
+	}
+
+	for _, msg := range messages {
+
+		topic := c.generateTopicFromProto(msg.MsgType, msg.ProtoMsg).String()
+		// Get trace data from message
+		ctx := trace.ContextWithSpan(context.TODO(), msg.Span)
+		ctx = baggage.ContextWithBaggage(ctx, msg.Baggage)
+
+		c.Producer.ProduceMsg(ctx, topic, msg.ProtoMsg, nil, nil)
+	}
+
+retry:
+	err = c.Producer.CommitTransaction(context.TODO())
+	if err != nil {
+		if err.(kafka.Error).IsRetriable() {
+			log.Warn().Err(err).
+				Str("error code", err.(kafka.Error).Code().String()).
+				Msg("failed to commit transactions, retrying..")
+			goto retry
+
+		} else if err.(kafka.Error).Code() == kafka.ErrProducerFenced {
+			c.Producer.Close()
+
+		} else if err.(kafka.Error).Code() == kafka.ErrTimedOut {
+			log.Warn().Err(err).
+				Str("error code", err.(kafka.Error).Code().String()).
+				Msg("failed to commit transactions, timed out")
+
+		} else {
+			log.Error().Err(err).
+				Str("error code", err.(kafka.Error).Code().String()).
+				Msg("failed to commit transactions, aborting..")
+
+			err = c.Producer.AbortTransaction(context.TODO())
+			if err != nil {
+				log.Fatal().Err(err).
+					Str("error code", err.(kafka.Error).Code().String()).
+					Msg("failed to abort transaction, killing producer..")
+			}
+		}
+		return err
+	}
+
+	log.Debug().Msg("successfully committed transactions")
+
+	return nil
 }

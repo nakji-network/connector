@@ -12,7 +12,6 @@ import (
 type Message struct {
 	*kafka.Message
 	Topic    Topic
-	TopicStr string
 	Key      Key
 	MsgType  MsgType
 	ProtoMsg proto.Message
