@@ -232,3 +232,11 @@ func BackfillFrom(ctx context.Context, client *ethclient.Client, addresses []com
 		return nil
 	}
 }
+
+//	HistoricalEvents queries past blocks for the events emitted by the given contract addresses.
+//	These events are provided in a channel and ready to be consumed by the caller.
+func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) chan types.Log {
+	ch := make(chan types.Log, 1000)
+	go Backfill(ctx, client, addresses, ch, fromBlock, toBlock)
+	return ch
+}
