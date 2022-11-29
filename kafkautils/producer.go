@@ -240,6 +240,7 @@ func (p *Producer) SendOffsetsToTransaction(position kafka.TopicPartitions, c *C
 	}
 }
 
+// DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction in connector.go instead.
 // WriteAndCommit writes for transactional producers, committing transaction after each write
 func (p *Producer) WriteAndCommit(ctx context.Context, topic Topic, key []byte, value proto.Message) error {
 	err := p.ProduceMsg(ctx, topic.String(), value, key, nil)
@@ -275,6 +276,7 @@ retry:
 
 const txBatchSize = 50
 
+// DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction in connector.go instead.
 // WriteAndCommitSink will wrap messages in a transaction. The transaction is committed
 // once there are 10 messages in the transaction or if the interval timer has been hit.
 func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
@@ -345,6 +347,7 @@ func (p *Producer) WriteAndCommitSink(in <-chan *Message) {
 	}
 }
 
+// DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction in connector.go instead.
 // MakeQueueTransactionSink creates a channel that receives Kafka Messages. All messages within the channel are then automatically
 // published to the specific topic in the `*kafkautils.Message`.
 func (p *Producer) MakeQueueTransactionSink() chan *Message {
