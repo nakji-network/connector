@@ -237,9 +237,12 @@ func BackfillFrom(ctx context.Context, client *ethclient.Client, addresses []com
 
 //	HistoricalEvents queries past blocks for the events emitted by the given contract addresses.
 //	These events are provided in a channel and ready to be consumed by the caller.
-func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) <-chan types.Log {
+func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) (<-chan types.Log, error) {
+	ch := make(chan types.Log, 1000)
+
 	if fromBlock == toBlock {
-		return nil
+		close(ch)
+		return ch, nil
 	}
 
 	if toBlock == 0 {
@@ -247,14 +250,15 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 		toBlock, err = client.BlockNumber(ctx)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to get block number")
+			close(ch)
+			return ch, nil
 		}
 	}
 
 	if fromBlock >= toBlock {
-		return nil
+		close(ch)
+		return ch, nil
 	}
-
-	ch := make(chan types.Log, 1000)
 
 	go func(logs chan types.Log) {
 		defer close(logs)
@@ -277,7 +281,7 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 		}
 	}(ch)
 
-	return ch
+	return ch, nil
 }
 
 // HistoricalEventsWithQueryParams queries past blocks for the events emitted by the given contract addresses.
@@ -285,7 +289,7 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 // * fromBlock > 0 && numBlocks > 0 => Backfill from fromBlock to fromBlock+numBlocks
 // * fromBlock > 0 && numBlocks = 0 => Backfill from fromBlock to current latest block
 // * fromBlock = 0 && numBlocks > 0 => Backfill last numBlocks blocks
-func HistoricalEventsWithQueryParams(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, numBlocks uint64) <-chan types.Log {
+func HistoricalEventsWithQueryParams(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, numBlocks uint64) (<-chan types.Log, error) {
 	switch {
 	case fromBlock > 0 && numBlocks > 0:
 		return HistoricalEvents(ctx, client, addresses, fromBlock, fromBlock+numBlocks)
@@ -295,10 +299,14 @@ func HistoricalEventsWithQueryParams(ctx context.Context, client *ethclient.Clie
 		toBlock, err := client.BlockNumber(ctx)
 		if err != nil {
 			log.Error().Err(err).Msg("failed to get block number")
-			return nil
+			ch := make(chan types.Log)
+			close(ch)
+			return ch, err
 		}
 		return HistoricalEvents(ctx, client, addresses, toBlock-numBlocks, toBlock)
 	default:
-		return nil
+		ch := make(chan types.Log)
+		close(ch)
+		return ch, nil
 	}
 }

@@ -220,7 +220,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 		case header := <-headers:
 			//	Start a backfill when there are missing blocks
 			if s.latestBlockNumber != nil && header.Number.Uint64()-s.latestBlockNumber.Uint64() > 1 {
-				if backfillLogs := HistoricalEvents(ctx, s.client, s.addresses, s.latestBlockNumber.Uint64(), header.Number.Uint64()); backfillLogs != nil {
+				if backfillLogs, err := HistoricalEvents(ctx, s.client, s.addresses, s.latestBlockNumber.Uint64(), header.Number.Uint64()); err == nil {
 					for bfLog := range backfillLogs {
 						s.inLogs <- bfLog
 					}
