@@ -10,7 +10,6 @@ package ethereum
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"strings"
 
@@ -145,7 +144,7 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 		return ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, failedQueries)
 	}
 
-	log.Debug().Str("from", fmt.Sprint(fromBlock)).Str("to", fmt.Sprint(toBlock)).Msg("retrieving historical events...")
+	log.Debug().Uint64("from", fromBlock).Uint64("to", toBlock).Msg("retrieving historical events...")
 
 	query := ethereum.FilterQuery{
 		FromBlock: big.NewInt(int64(fromBlock)),
@@ -161,7 +160,7 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			log.Error().Err(err).Msg("hit RPC rate limit")
 			return nil, err
 		}
-		log.Error().Err(err).Str("from", fmt.Sprint(fromBlock)).Str("to", fmt.Sprint(toBlock)).Msg("skipping failed backfill interval...")
+		log.Error().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Msg("skipping failed backfill interval...")
 		failedQueries = append(failedQueries, query)
 	}
 
@@ -172,7 +171,9 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 	return failedQueries, err
 }
 
+// DEPRECATED, this function will be removed in a future release. Please use HistoricalEvents instead.
 // Backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
+// Use a disposable channel to call this function as the function will close it to signal EOF.
 func Backfill(ctx context.Context, client *ethclient.Client, addresses []common.Address, logs chan types.Log, fromBlock uint64, toBlock uint64) error {
 	defer close(logs)
 
@@ -205,12 +206,13 @@ func Backfill(ctx context.Context, client *ethclient.Client, addresses []common.
 			return err
 		}
 		for _, q2 := range fq {
-			log.Error().Str("from", fmt.Sprint(q2.FromBlock)).Str("to", fmt.Sprint(q2.ToBlock)).Msg("aborting failed backfill interval.")
+			log.Error().Uint64("from", q2.FromBlock.Uint64()).Uint64("to", q2.ToBlock.Uint64()).Msg("aborting failed backfill interval.")
 		}
 	}
 	return nil
 }
 
+// DEPRECATED, this function will be removed in a future release. Please use HistoricalEventsWithQueryParams instead.
 // BackfillFrom queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
 // * fromBlock > 0 && numBlocks > 0 => Backfill from fromBlock to fromBlock+numBlocks
 // * fromBlock > 0 && numBlocks = 0 => Backfill from fromBlock to current latest block
@@ -230,5 +232,81 @@ func BackfillFrom(ctx context.Context, client *ethclient.Client, addresses []com
 		return Backfill(ctx, client, addresses, logs, toBlock-numBlocks, toBlock)
 	default:
 		return nil
+	}
+}
+
+//	HistoricalEvents queries past blocks for the events emitted by the given contract addresses.
+//	These events are provided in a channel and ready to be consumed by the caller.
+func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) (<-chan types.Log, error) {
+	ch := make(chan types.Log, 1000)
+
+	if fromBlock == toBlock {
+		close(ch)
+		return ch, nil
+	}
+
+	if toBlock == 0 {
+		var err error
+		toBlock, err = client.BlockNumber(ctx)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to get block number")
+			close(ch)
+			return ch, nil
+		}
+	}
+
+	if fromBlock >= toBlock {
+		close(ch)
+		return ch, nil
+	}
+
+	go func(logs chan types.Log) {
+		defer close(logs)
+
+		//	Store failed queries for retry
+		failedQueries, err := ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, nil)
+		if err != nil {
+			log.Error().Uint64("from", fromBlock).Uint64("to", toBlock).Msg("some intervals failed during backfill..")
+		}
+
+		for _, q := range failedQueries {
+			//	Retry failed queries one more time
+			fq, err := ChunkedFilterLogs(ctx, client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), logs, nil)
+			if err != nil {
+				log.Error().Uint64("from", q.FromBlock.Uint64()).Uint64("to", q.ToBlock.Uint64()).Msg("some intervals failed during backfill retry..")
+			}
+			for _, q2 := range fq {
+				log.Error().Uint64("from", q2.FromBlock.Uint64()).Uint64("to", q2.ToBlock.Uint64()).Msg("aborting failed backfill interval.")
+			}
+		}
+	}(ch)
+
+	return ch, nil
+}
+
+// HistoricalEventsWithQueryParams queries past blocks for the events emitted by the given contract addresses.
+// These events are provided in a channel and ready to be consumed by the caller.
+// * fromBlock > 0 && numBlocks > 0 => Backfill from fromBlock to fromBlock+numBlocks
+// * fromBlock > 0 && numBlocks = 0 => Backfill from fromBlock to current latest block
+// * fromBlock = 0 && numBlocks > 0 => Backfill last numBlocks blocks
+func HistoricalEventsWithQueryParams(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, numBlocks uint64) (<-chan types.Log, error) {
+	switch {
+	case fromBlock > 0 && numBlocks > 0:
+		return HistoricalEvents(ctx, client, addresses, fromBlock, fromBlock+numBlocks)
+	case fromBlock > 0 && numBlocks == 0:
+		return HistoricalEvents(ctx, client, addresses, fromBlock, 0)
+	case fromBlock == 0 && numBlocks > 0:
+		toBlock, err := client.BlockNumber(ctx)
+		if err != nil {
+			log.Error().Err(err).Msg("failed to get block number")
+			ch := make(chan types.Log)
+			close(ch)
+			return ch, err
+		}
+		return HistoricalEvents(ctx, client, addresses, toBlock-numBlocks, toBlock)
+	default:
+		ch := make(chan types.Log)
+		close(ch)
+		return ch, nil
 	}
 }
