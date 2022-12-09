@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/go-logr/logr"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -47,6 +48,7 @@ func InitTracerProvider(ctx context.Context, host, name, version, env string, sa
 		trace.WithBatcher(traceExporter),
 		trace.WithResource(r),
 	)
+	otel.SetLogger(logr.Discard())
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
