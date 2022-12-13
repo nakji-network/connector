@@ -32,9 +32,12 @@ type Connector struct {
 	producerStarted   bool
 	protoRegistryHost string
 
-	RPCMap map[string]chain.RPCs
-	Config *viper.Viper
-	Health healthcheck.Handler
+	RPCMap         map[string]chain.RPCs
+	Config         *viper.Viper
+	Health         healthcheck.Handler
+	Blockchain     string
+	Backfill       *Backfill
+	FactoryAddress string
 
 	//	DEPRECATED, this property will be removed in a future release. Please use ProduceWithTransaction instead.
 	//	EventSink can be used to push incoming on-chain events to Kafka.
@@ -103,6 +106,13 @@ func NewConnector(options ...Option) (*Connector, error) {
 
 	//	Start Prometheus monitoring
 	monitor.StartMonitor(c.id())
+
+	c.Blockchain = c.manifest.Blockchain
+	c.FactoryAddress = c.manifest.FactoryAddress
+
+	if c.manifest.Backfill.FromBlock != 0 || c.manifest.Backfill.NumBlocks != 0 {
+		c.Backfill = &c.manifest.Backfill
+	}
 
 	return c, nil
 }

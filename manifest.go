@@ -10,9 +10,20 @@ import (
 )
 
 type manifest struct {
-	Name    string
-	Author  string
-	Version version
+	Name       string   `yaml:"name"`
+	Author     string   `yaml:"author"`
+	Blockchain string   `yaml:"blockchain"`
+	Version    version  `yaml:"version"`
+	Backfill   Backfill `yaml:"backfill"`
+
+	// Address for Liquidity Pool creating smart contract (for DEXes only)
+	FactoryAddress string `yaml:"factoryAddress"`
+}
+
+// Parameters for historical data retrieval
+type Backfill struct {
+	FromBlock uint64 `yaml:"fromBlock"`
+	NumBlocks uint64 `yaml:"numBlocks"`
 }
 
 // TODO: tell user to use embed to embed the manifest.yaml file or else they'll have to manually keep the file with the exe
