@@ -6,18 +6,18 @@ package ethereum
 
 import (
 	"context"
-	"os"
-	"os/signal"
+	"math/big"
 	"strings"
-	"time"
 
 	"github.com/nakji-network/connector"
+	"github.com/nakji-network/connector/chain/ethereum"
+	"github.com/nakji-network/connector/common"
+	"github.com/nakji-network/connector/examples/ethereum/chain"
 	"github.com/nakji-network/connector/kafkautils"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/rs/zerolog/log"
-	"google.golang.org/protobuf/proto"
 )
 
 type Connector struct {
@@ -27,19 +27,22 @@ type Connector struct {
 	// eg: client: DogecoinClient(context.Background()),
 	client *ethclient.Client
 
+	// Subsrciption module handles various tasks while listening to live data from EVM blockchains
+	sub ethereum.ISubscription
+
 	// Any additional config vars from the config yaml, using functions from Viper (https://pkg.go.dev/github.com/spf13/viper#readme-getting-values-from-viper)
 	// This is namespaced via connector id (author-name-version)
 	// CustomOption: c.Config.GetString("custom_option"),
 }
 
-func NewConnector(chain string) *Connector {
+func NewConnector() *Connector {
 	c, err := connector.NewConnector()
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate nakji connector")
 	}
 
 	// Read config from config yaml under `rpcs.[chain].full`
-	rpcs := c.RPCMap[chain].Full
+	rpcs := c.RPCMap[c.Blockchain].Full
 
 	// go-ethereum client only supports 1 rpc connection currently, so we do this hack
 	var RPCURL string
@@ -49,103 +52,137 @@ func NewConnector(chain string) *Connector {
 			break
 		}
 	}
-	log.Info().
-		Str("chain", chain).
-		Str("url", RPCURL).
-		Msg("connecting to RPC")
+	log.Info().Str("chain", c.Blockchain).Str("url", RPCURL).Msg("connecting to RPC")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	client, err := ethclient.DialContext(ctx, RPCURL)
+	client, err := ethclient.DialContext(context.Background(), RPCURL)
 	if err != nil {
 		log.Fatal().Err(err).Msg("RPC connection error")
 	}
 
+	sub, err := ethereum.NewSubscription(client, c.Blockchain, nil)
+	if err != nil {
+		log.Fatal().Err(err).Str("chain", c.Blockchain).Msg("subscription failed")
+	}
+
+	// Register topic and protobuf type mappings
+	c.RegisterProtos(kafkautils.MsgTypeFct, protos...)
+
 	return &Connector{
-		c,
-		client,
+		Connector: c,
+		client:    client,
+		sub:       sub,
 	}
 }
 
 func (c *Connector) Start() {
-	// Register topic and protobuf type mappings
-	c.RegisterProtos(kafkautils.MsgTypeFct, protos...)
+	ctx, cancel := context.WithCancel(context.Background())
 
-	// Listen for interrupt in order to cleanly close connections later
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
+	go c.backfill(ctx, cancel)
 
-	// Subscribe to headers
-	headers := make(chan *types.Header)
-	sub, err := c.client.SubscribeNewHead(context.Background(), headers)
-	if err != nil {
-		log.Fatal().Err(err)
+	//	Only subscribe to the blockchain events when it is not a backfill job
+	if c.Backfill == nil {
+		go c.listenBlocks(ctx, cancel)
 	}
 
-	// Main loop to process errors and headers
-	go func() {
-		for {
-			select {
-			case err := <-sub.Err():
-				log.Fatal().Err(err)
-			case header := <-headers:
-				// Header doesn't contain full block information, so get block
-				block, err := c.client.BlockByHash(context.Background(), header.Hash())
-				if err != nil {
-					log.Fatal().Err(err).Msg("BlockByHash error")
-				}
+	<-ctx.Done()
+	c.sub.Close()
+}
 
-				LogBlock(block)
+func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc) {
 
-				// EthBlock -> Block -> Protobuf -> kafka
-				var blockData Block
-				blockData.UnmarshalEthBlock(block)
+	if c.Backfill == nil {
+		return
+	}
 
-				c.EventSink <- buildKafkaMsg(kafkautils.MsgTypeFct, &blockData)
+	c.RegisterProtos(kafkautils.MsgTypeBf, protos...)
 
-				// EthTransaction -> Transaction -> Protobuf -> Kafka
-				for _, tx := range block.Transactions() {
-					txData := Transaction{}
-					txData.UnmarshalEthTransaction(tx)
-					txData.Ts = blockData.Ts // Timestamp isn't in the raw transaction from geth
+	fromBlock := c.Backfill.FromBlock
+	toBlock, err := c.client.BlockNumber(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to get current block number")
+	}
 
-					c.EventSink <- buildKafkaMsg(kafkautils.MsgTypeFct, &txData)
-				}
+	if c.Backfill.FromBlock > 0 && c.Backfill.NumBlocks > 0 {
+		lastBlock := c.Backfill.FromBlock + c.Backfill.NumBlocks
+
+		if lastBlock < toBlock {
+			toBlock = lastBlock
+		}
+
+	} else if c.Backfill.NumBlocks > 0 {
+		fromBlock = toBlock - c.Backfill.NumBlocks
+	}
+
+	for fromBlock < toBlock {
+		block, err := c.client.BlockByNumber(ctx, big.NewInt(int64(toBlock)))
+		if err != nil {
+			log.Error().Err(err).Msg("failed to retrieve block")
+		}
+
+		err = c.process(block)
+		if err != nil {
+			log.Error().Err(err).Uint64("block", block.Number().Uint64()).Msg("failed to process block")
+		}
+		toBlock--
+	}
+
+	if cancel != nil {
+		log.Info().Msg("backfill completed. shutting down connector.")
+		cancel()
+	}
+}
+
+func (c *Connector) listenBlocks(ctx context.Context, cancel context.CancelFunc) {
+	c.sub.Subscribe(ctx)
+
+	go c.listenCloseSignal(cancel)
+
+	for h := range c.sub.Headers() {
+		block, err := c.client.BlockByNumber(ctx, h.Number)
+		if err != nil {
+			block, err = c.client.BlockByHash(ctx, h.Hash())
+			if err != nil {
+				log.Error().Err(err).Msg("failed to retrieve block")
+				continue
 			}
 		}
-	}()
 
-	for {
-		select {
-		case <-interrupt:
-			log.Info().Msg("interrupt")
-
-			// Cleanly close the connection by sending a close message and then
-			// waiting (with timeout) for the server to close the connection.
-			c.client.Close()
-			c.Close()
-			return
+		err = c.process(block)
+		if err != nil {
+			log.Error().Err(err).Uint64("block", block.Number().Uint64()).Msg("failed to process block")
 		}
 	}
 }
 
-func buildKafkaMsg(msgType kafkautils.MsgType, msg proto.Message) *kafkautils.Message {
-	return &kafkautils.Message{
-		MsgType:  msgType,
-		ProtoMsg: msg,
+func (c *Connector) listenCloseSignal(cancel context.CancelFunc) {
+	select {
+	//	Listen to error channel
+	case err := <-c.sub.Err():
+		log.Error().Err(err).Str("network", c.Blockchain).Msg("subscription failed")
+		cancel()
+
+	case <-c.sub.Done():
+		cancel()
 	}
 }
 
-func LogBlock(block *types.Block) {
-	log.Debug().
-		Str("hash", block.Hash().Hex()).             // 0xbc10defa8dda384c96a17640d84de5578804945d347072e091b4e5f390ddea7f
-		Uint64("num", block.Number().Uint64()).      // 3477413
-		Uint64("time", block.Time()).                // 1529525947
-		Uint64("nonce", block.Nonce()).              // 130524141876765836
-		Int("#tx", len(block.Transactions())).       // 7
-		Uint64("gas limit", block.GasLimit()).       // 1529525947
-		Uint64("gau used", block.GasUsed()).         // 1529525947
-		Interface("difficulty", block.Difficulty()). // 1529525947
-		Msg("new block")
+func (c *Connector) process(block *types.Block) error {
+
+	header := block.Header()
+	messages := make([]*kafkautils.Message, len(block.Transactions())+1)
+
+	for i, t := range block.Transactions() {
+		ts := common.UnixToTimestampPb(int64(header.Time))
+		messages[i] = &kafkautils.Message{
+			MsgType:  kafkautils.MsgTypeFct,
+			ProtoMsg: chain.ParseTransaction(t, ts),
+		}
+	}
+
+	messages[len(messages)-1] = &kafkautils.Message{
+		MsgType:  kafkautils.MsgTypeFct,
+		ProtoMsg: chain.ParseHeader(header),
+	}
+
+	return c.ProduceWithTransaction(messages)
 }

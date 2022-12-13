@@ -6,6 +6,6 @@ import (
 )
 
 func main() {
-	ec := ethereum.NewConnector("ethereum")
+	ec := ethereum.NewConnector()
 	ec.Start()
 }

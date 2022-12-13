@@ -1,13 +1,11 @@
 module github.com/nakji-network/connector/examples/ethereum
 
-go 1.18
-
-replace github.com/nakji-network/connector => ../../
+go 1.19
 
 require (
 	github.com/ethereum/go-ethereum v1.10.15
-	github.com/golang/protobuf v1.5.2
-	github.com/nakji-network/connector v0.0.1-beta.1
+	github.com/nakji-network/connector v0.0.1-beta.1.0.20221110211311-416552a01359
+	github.com/nakji-network/connector/chain/ethereum v0.0.0-20221213033835-c023d7b3072a
 	github.com/rs/zerolog v1.28.0
 	google.golang.org/protobuf v1.28.1
 )
@@ -26,8 +24,10 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.1 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
+	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0 // indirect
+	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/heptiolabs/healthcheck v0.0.0-20211123025425-613501dd5deb // indirect
 	github.com/joonix/log v0.0.0-20200409080653-9c1d2ceb5f1d // indirect
@@ -53,9 +53,13 @@ require (
 	github.com/tklauser/numcpus v0.2.2 // indirect
 	go.opentelemetry.io/otel v1.11.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/internal/retry v1.11.1 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric v0.33.0 // indirect
+	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v0.33.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace v1.11.1 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.11.1 // indirect
+	go.opentelemetry.io/otel/metric v0.33.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.11.1 // indirect
+	go.opentelemetry.io/otel/sdk/metric v0.33.0 // indirect
 	go.opentelemetry.io/otel/trace v1.11.1 // indirect
 	go.opentelemetry.io/proto/otlp v0.19.0 // indirect
 	golang.org/x/crypto v0.0.0-20211215165025-cf75a172585e // indirect
