@@ -44,9 +44,10 @@ func (c *Connector) Start() {
 
 	c.RegisterProtos(kafkautils.MsgTypeBf, protos...)
 
+	// Run backfill job if user is only interested in historical data
 	go c.backfill(ctx, cancel, c.FromBlock, c.NumBlocks)
 
-	//	Only subscribe to the blockchain events when it is not a backfill job
+	// Only subscribe to the blockchain events when it is not a backfill job
 	if c.FromBlock == 0 && c.NumBlocks == 0 {
 
 		// Backfill last 100 blocks at every start
@@ -60,11 +61,13 @@ func (c *Connector) Start() {
 	c.Sub.Close()
 }
 
+// backfill queries for historical data and pushes them to Kafka
 func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc, fromBlock, numBlocks uint64) {
 	if fromBlock == 0 && numBlocks == 0 {
 		return
 	}
 
+	// Calculate block interval for historical data
 	startingBlock := fromBlock
 	toBlock, err := c.Client.BlockNumber(ctx)
 	if err != nil {
@@ -91,6 +94,7 @@ func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc, fro
 			if msg := c.parse(kafkautils.MsgTypeBf, ethereum.Log{Log: bfLog}); msg != nil {
 				messages = append(messages, msg)
 
+				// Commit messages at every new block
 				if blockNumber != bfLog.BlockNumber {
 					c.ProduceWithTransaction(messages)
 					blockNumber = bfLog.BlockNumber
@@ -106,6 +110,7 @@ func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc, fro
 	}
 }
 
+// listenLogs subscribes to live data and pushes incoming logs to kafka
 func (c *Connector) listenLogs(ctx context.Context, cancel context.CancelFunc) {
 
 	// Register topic and protobuf type mappings
@@ -121,6 +126,7 @@ func (c *Connector) listenLogs(ctx context.Context, cancel context.CancelFunc) {
 		if msg := c.parse(kafkautils.MsgTypeFct, vLog); msg != nil {
 			messages = append(messages, msg)
 
+			// Commit messages at every new block
 			if blockNumber != vLog.BlockNumber {
 				c.ProduceWithTransaction(messages)
 				blockNumber = vLog.BlockNumber
@@ -130,6 +136,7 @@ func (c *Connector) listenLogs(ctx context.Context, cancel context.CancelFunc) {
 	}
 }
 
+// listenCloseSignal signals the program to terminate
 func (c *Connector) listenCloseSignal(cancel context.CancelFunc) {
 	select {
 	//	Listen to error channel
@@ -142,6 +149,7 @@ func (c *Connector) listenCloseSignal(cancel context.CancelFunc) {
 	}
 }
 
+// parse extracts data from incoming event log and converts into a Kafka message
 func (c *Connector) parse(msgType kafkautils.MsgType, vLog ethereum.Log) *kafkautils.Message {
 	address := vLog.Address.String()
 	if c.Contracts[address] == nil {
