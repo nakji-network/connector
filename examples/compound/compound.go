@@ -61,7 +61,7 @@ func (c *Connector) Start() {
 	c.Sub.Close()
 }
 
-// backfill queries for historical data and pushes them to Kafka
+// backfill queries for historical data and pushes them to Kafka.
 func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc, fromBlock, numBlocks uint64) {
 	if fromBlock == 0 && numBlocks == 0 {
 		return
@@ -110,7 +110,7 @@ func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc, fro
 	}
 }
 
-// listenLogs subscribes to live data and pushes incoming logs to kafka
+// listenLogs subscribes to live data and pushes incoming logs to Kafka.
 func (c *Connector) listenLogs(ctx context.Context, cancel context.CancelFunc) {
 
 	// Register topic and protobuf type mappings
@@ -136,7 +136,7 @@ func (c *Connector) listenLogs(ctx context.Context, cancel context.CancelFunc) {
 	}
 }
 
-// listenCloseSignal signals the program to terminate
+// listenCloseSignal signals the program to terminate.
 func (c *Connector) listenCloseSignal(cancel context.CancelFunc) {
 	select {
 	//	Listen to error channel
@@ -149,7 +149,7 @@ func (c *Connector) listenCloseSignal(cancel context.CancelFunc) {
 	}
 }
 
-// parse extracts data from incoming event log and converts into a Kafka message
+// parse extracts data from incoming event log and converts into a Kafka message.
 func (c *Connector) parse(msgType kafkautils.MsgType, vLog ethereum.Log) *kafkautils.Message {
 	address := vLog.Address.String()
 	if c.Contracts[address] == nil {
