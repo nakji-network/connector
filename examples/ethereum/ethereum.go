@@ -7,114 +7,90 @@ package ethereum
 import (
 	"context"
 	"math/big"
-	"strings"
 
-	"github.com/nakji-network/connector"
 	"github.com/nakji-network/connector/chain/ethereum"
 	"github.com/nakji-network/connector/common"
 	"github.com/nakji-network/connector/examples/ethereum/chain"
 	"github.com/nakji-network/connector/kafkautils"
 
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/rs/zerolog/log"
 )
 
 type Connector struct {
-	*connector.Connector // embed Nakji connector.Connector into your custom connector to get access to all its methods
+	*ethereum.Connector // embed Nakji ethereum.Connector into your custom connector to get access to all its methods
 
-	// Any additional custom connections not supported natively by Nakji, replace it as you see fit.
-	// eg: client: DogecoinClient(context.Background()),
-	client *ethclient.Client
+	Blockchain string
 
-	// Subsrciption module handles various tasks while listening to live data from EVM blockchains
-	sub ethereum.ISubscription
+	// Parameters for historical data
+	FromBlock uint64
+	NumBlocks uint64
 
 	// Any additional config vars from the config yaml, using functions from Viper (https://pkg.go.dev/github.com/spf13/viper#readme-getting-values-from-viper)
 	// This is namespaced via connector id (author-name-version)
 	// CustomOption: c.Config.GetString("custom_option"),
 }
 
-func NewConnector() *Connector {
-	c, err := connector.NewConnector()
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to instantiate nakji connector")
-	}
+func NewConnector(blockchain string, fromBlock, numBlocks uint64) *Connector {
 
-	// Read config from config yaml under `rpcs.[chain].full`
-	rpcs := c.RPCMap[c.Blockchain].Full
-
-	// go-ethereum client only supports 1 rpc connection currently, so we do this hack
-	var RPCURL string
-	for _, u := range rpcs {
-		if strings.HasPrefix(u, "ws") {
-			RPCURL = u
-			break
-		}
-	}
-	log.Info().Str("chain", c.Blockchain).Str("url", RPCURL).Msg("connecting to RPC")
-
-	client, err := ethclient.DialContext(context.Background(), RPCURL)
-	if err != nil {
-		log.Fatal().Err(err).Msg("RPC connection error")
-	}
-
-	sub, err := ethereum.NewSubscription(client, c.Blockchain, nil)
-	if err != nil {
-		log.Fatal().Err(err).Str("chain", c.Blockchain).Msg("subscription failed")
-	}
-
-	// Register topic and protobuf type mappings
-	c.RegisterProtos(kafkautils.MsgTypeFct, protos...)
+	ec := ethereum.NewConnector(context.Background(), nil, blockchain)
 
 	return &Connector{
-		Connector: c,
-		client:    client,
-		sub:       sub,
+		Connector: ec,
+		FromBlock: fromBlock,
+		NumBlocks: numBlocks,
 	}
 }
 
 func (c *Connector) Start() {
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go c.backfill(ctx, cancel)
+	go c.listenCloseSignal(cancel)
+
+	c.RegisterProtos(kafkautils.MsgTypeBf, protos...)
+
+	go c.backfill(ctx, cancel, c.FromBlock, c.NumBlocks)
 
 	//	Only subscribe to the blockchain events when it is not a backfill job
-	if c.Backfill == nil {
+	if c.FromBlock == 0 && c.NumBlocks == 0 {
+
+		// Backfill last 100 blocks at every start
+		go c.backfill(ctx, nil, 0, 100)
+
+		// Listen live data
 		go c.listenBlocks(ctx, cancel)
 	}
 
 	<-ctx.Done()
-	c.sub.Close()
+	c.Sub.Close()
 }
 
-func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc) {
-
-	if c.Backfill == nil {
+// backfill queries for historical data and pushes them to Kafka.
+func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc, fromBlock, numBlocks uint64) {
+	if fromBlock == 0 && numBlocks == 0 {
 		return
 	}
 
-	c.RegisterProtos(kafkautils.MsgTypeBf, protos...)
-
-	fromBlock := c.Backfill.FromBlock
-	toBlock, err := c.client.BlockNumber(ctx)
+	// Calculate block interval for historical data
+	startingBlock := fromBlock
+	toBlock, err := c.Client.BlockNumber(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get current block number")
 	}
 
-	if c.Backfill.FromBlock > 0 && c.Backfill.NumBlocks > 0 {
-		lastBlock := c.Backfill.FromBlock + c.Backfill.NumBlocks
+	if fromBlock > 0 && numBlocks > 0 {
+		lastBlock := fromBlock + numBlocks
 
 		if lastBlock < toBlock {
 			toBlock = lastBlock
 		}
 
-	} else if c.Backfill.NumBlocks > 0 {
-		fromBlock = toBlock - c.Backfill.NumBlocks
+	} else if numBlocks > 0 {
+		startingBlock = toBlock - numBlocks
 	}
 
-	for fromBlock < toBlock {
-		block, err := c.client.BlockByNumber(ctx, big.NewInt(int64(toBlock)))
+	for startingBlock < toBlock {
+		block, err := c.Client.BlockByNumber(ctx, big.NewInt(int64(toBlock)))
 		if err != nil {
 			log.Error().Err(err).Msg("failed to retrieve block")
 		}
@@ -132,15 +108,17 @@ func (c *Connector) backfill(ctx context.Context, cancel context.CancelFunc) {
 	}
 }
 
+// listenBlocks subscribes to live data and pushes incoming logs to Kafka.
 func (c *Connector) listenBlocks(ctx context.Context, cancel context.CancelFunc) {
-	c.sub.Subscribe(ctx)
+	// Register topic and protobuf type mappings
+	c.RegisterProtos(kafkautils.MsgTypeFct, protos...)
 
-	go c.listenCloseSignal(cancel)
+	c.Sub.Subscribe(ctx)
 
-	for h := range c.sub.Headers() {
-		block, err := c.client.BlockByNumber(ctx, h.Number)
+	for h := range c.Sub.Headers() {
+		block, err := c.Client.BlockByNumber(ctx, h.Number)
 		if err != nil {
-			block, err = c.client.BlockByHash(ctx, h.Hash())
+			block, err = c.Client.BlockByHash(ctx, h.Hash())
 			if err != nil {
 				log.Error().Err(err).Msg("failed to retrieve block")
 				continue
@@ -154,14 +132,15 @@ func (c *Connector) listenBlocks(ctx context.Context, cancel context.CancelFunc)
 	}
 }
 
+// listenCloseSignal signals the program to terminate.
 func (c *Connector) listenCloseSignal(cancel context.CancelFunc) {
 	select {
 	//	Listen to error channel
-	case err := <-c.sub.Err():
+	case err := <-c.Sub.Err():
 		log.Error().Err(err).Str("network", c.Blockchain).Msg("subscription failed")
 		cancel()
 
-	case <-c.sub.Done():
+	case <-c.Sub.Done():
 		cancel()
 	}
 }
