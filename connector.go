@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/nakji-network/connector/chain"
@@ -25,6 +26,7 @@ type Connector struct {
 	*kafkautils.Consumer
 	*kafkautils.Producer
 
+	mu                sync.Mutex
 	consumerStarted   bool
 	env               kafkautils.Env
 	kafkaUrl          string
@@ -339,6 +341,9 @@ func (c *Connector) ProduceWithTransaction(messages []*kafkautils.Message) error
 	if !c.producerStarted {
 		c.startProducer()
 	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	err := c.Producer.BeginTransaction()
 	if err != nil {
