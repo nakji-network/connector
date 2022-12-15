@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/ethereum/go-ethereum v1.10.15
 	github.com/nakji-network/connector v0.0.1-beta.1.0.20221110211311-416552a01359
-	github.com/nakji-network/connector/chain/ethereum v0.0.0-20221213033835-c023d7b3072a
+	github.com/nakji-network/connector/chain/ethereum v0.0.0-20221215084034-7c827bbeb185
 	github.com/rs/zerolog v1.28.0
 	google.golang.org/protobuf v1.28.1
 )

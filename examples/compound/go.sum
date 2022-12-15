@@ -419,6 +419,8 @@ github.com/nakji-network/connector v0.0.1-beta.1.0.20221110211311-416552a01359 h
 github.com/nakji-network/connector v0.0.1-beta.1.0.20221110211311-416552a01359/go.mod h1:/LWxlRLVonfLjIHHz8grGal2vpmuNdwW0hzM43Rn/z4=
 github.com/nakji-network/connector/chain/ethereum v0.0.0-20221213033835-c023d7b3072a h1:06u6XvBQcgTocHpH3u4ZXYaMJ3G+aptbSuUrBmdT0B8=
 github.com/nakji-network/connector/chain/ethereum v0.0.0-20221213033835-c023d7b3072a/go.mod h1:dtTt71B6IM/hUBjdwHvd4e6hRDPZ0cQVVaV6P4Oiyj8=
+github.com/nakji-network/connector/chain/ethereum v0.0.0-20221215084034-7c827bbeb185 h1:MkpGAxdBsu4e9oAYWNKs3vMRaU6B6r7IMmu/d4zUoKw=
+github.com/nakji-network/connector/chain/ethereum v0.0.0-20221215084034-7c827bbeb185/go.mod h1:dtTt71B6IM/hUBjdwHvd4e6hRDPZ0cQVVaV6P4Oiyj8=
 github.com/naoina/go-stringutil v0.1.0/go.mod h1:XJ2SJL9jCtBh+P9q5btrd/Ylo8XwT/h1USek5+NqSA0=
 github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416/go.mod h1:NBIhNtsFMo3G2szEBne+bO4gS192HuIYRqfvOWb4i1E=
 github.com/nrwiersma/avro-benchmarks v0.0.0-20210913175520-21aec48c8f76/go.mod h1:iKyFMidsk/sVYONJRE372sJuX/QTRPacU7imPqqsu7g=
