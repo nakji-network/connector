@@ -9,6 +9,7 @@ import (
 	"github.com/Masterminds/semver"
 	"github.com/rs/zerolog/log"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 type Env string
@@ -60,9 +61,15 @@ func NewTopic(en Env, ty MsgType, author, connectorName string, version *semver.
 		Author:        author,
 		ConnectorName: connectorName,
 		Version:       version,
-		EventName:     strings.ReplaceAll(string(msg.ProtoReflect().Descriptor().FullName()), ".", "_"),
+		EventName:     getEventName(msg.ProtoReflect().Descriptor().FullName()),
 		pb:            msg,
 	}
+}
+
+func getEventName(fn protoreflect.FullName) string {
+	ss := strings.Split(string(fn), TopicContextSeparator)
+	length := len(ss)
+	return strings.Join([]string{ss[length-2], ss[length-1]}, TopicContractSeparator)
 }
 
 // ParseTopic parses topic string to Topic struct.
