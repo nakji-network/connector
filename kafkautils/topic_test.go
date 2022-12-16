@@ -7,6 +7,7 @@ import (
 
 	"github.com/Masterminds/semver"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 func init() {
@@ -69,6 +70,39 @@ func TestParseTopic(t *testing.T) {
 
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("ParseTopic() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func Test_getEventName(t *testing.T) {
+	type args struct {
+		fn protoreflect.FullName
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "short name",
+			args: args{
+				fn: "chain.Transaction",
+			},
+			want: "chain_Transaction",
+		},
+		{
+			name: "long name",
+			args: args{
+				fn: "nakji.evm.chain.Block",
+			},
+			want: "chain_Block",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := getEventName(tt.args.fn); got != tt.want {
+				t.Errorf("getEventName() = %v, want %v", got, tt.want)
 			}
 		})
 	}
