@@ -414,10 +414,8 @@ github.com/modern-go/reflect2 v1.0.1/go.mod h1:bx2lNnkwVCuqBIxFjflWJWanXIb3Rllmb
 github.com/mschoch/smat v0.0.0-20160514031455-90eadee771ae/go.mod h1:qAyveg+e4CE+eKJXWVjKXM4ck2QobLqTDytGJbLLhJg=
 github.com/mwitkow/go-conntrack v0.0.0-20161129095857-cc309e4a2223/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
-github.com/nakji-network/connector v0.0.1-beta.1.0.20221110211311-416552a01359 h1:zCl0FeaXRtVXQwQFl+LHs5uxDDzRgl+pPuhf3a25mHY=
-github.com/nakji-network/connector v0.0.1-beta.1.0.20221110211311-416552a01359/go.mod h1:/LWxlRLVonfLjIHHz8grGal2vpmuNdwW0hzM43Rn/z4=
-github.com/nakji-network/connector v0.0.1-beta.1.0.20221215084034-7c827bbeb185 h1:X2VHrMlFUTlwOZkVGn3wP2cCspy9UrOWelG5/6Ax/xU=
-github.com/nakji-network/connector v0.0.1-beta.1.0.20221215084034-7c827bbeb185/go.mod h1:/LWxlRLVonfLjIHHz8grGal2vpmuNdwW0hzM43Rn/z4=
+github.com/nakji-network/connector v0.0.1-beta.1.0.20221216054141-e51ef13e9d04 h1:og7SCWP5ywe3jqmBi871TprD4s93g3tgQo75pg5QQ6A=
+github.com/nakji-network/connector v0.0.1-beta.1.0.20221216054141-e51ef13e9d04/go.mod h1:gAePupEySwKA8CtvtrI2TNDRlQIOREeTNTcyd9hOjJM=
 github.com/naoina/go-stringutil v0.1.0/go.mod h1:XJ2SJL9jCtBh+P9q5btrd/Ylo8XwT/h1USek5+NqSA0=
 github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416/go.mod h1:NBIhNtsFMo3G2szEBne+bO4gS192HuIYRqfvOWb4i1E=
 github.com/nrwiersma/avro-benchmarks v0.0.0-20210913175520-21aec48c8f76/go.mod h1:iKyFMidsk/sVYONJRE372sJuX/QTRPacU7imPqqsu7g=
