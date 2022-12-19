@@ -1,3 +1,12 @@
 name: ethereum
 author: nakji
 version: 0.0.0
+blockchain: ethereum
+
+# # Use backfill parameters when you want to run a job to retrieve historical data
+# backfill:
+#   fromBlock: 12346  # blocknumber to start backfill from
+#   numBlocks: 100    # number of blocks to process
+
+## Only for DEX connectors (e.g. uniswap), liquidity pool factory address must be provided
+# factoryAddress: 0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f

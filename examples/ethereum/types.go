@@ -1,11 +1,12 @@
 package ethereum
 
 import (
+	"github.com/nakji-network/connector/examples/ethereum/chain"
+
 	"google.golang.org/protobuf/proto"
 )
 
 var protos = []proto.Message{
-	&Block{},
-	&Transaction{},
-	&Block0{},
+	&chain.Block{},
+	&chain.Transaction{},
 }
