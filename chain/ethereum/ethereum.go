@@ -11,7 +11,9 @@ package ethereum
 import (
 	"context"
 	"math/big"
+	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/nakji-network/connector"
 
@@ -235,8 +237,8 @@ func BackfillFrom(ctx context.Context, client *ethclient.Client, addresses []com
 	}
 }
 
-//	HistoricalEvents queries past blocks for the events emitted by the given contract addresses.
-//	These events are provided in a channel and ready to be consumed by the caller.
+// HistoricalEvents queries past blocks for the events emitted by the given contract addresses.
+// These events are provided in a channel and ready to be consumed by the caller.
 func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) (<-chan types.Log, error) {
 	ch := make(chan types.Log, 1000)
 
@@ -251,7 +253,7 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 		if err != nil {
 			log.Error().Err(err).Msg("failed to get block number")
 			close(ch)
-			return ch, nil
+			return ch, err
 		}
 	}
 
@@ -266,17 +268,44 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 		//	Store failed queries for retry
 		failedQueries, err := ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, nil)
 		if err != nil {
-			log.Error().Uint64("from", fromBlock).Uint64("to", toBlock).Msg("some intervals failed during backfill..")
+			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Msg("some intervals failed during backfill, retying...")
 		}
 
-		for _, q := range failedQueries {
-			//	Retry failed queries one more time
+		// Count the number of consecutive failures. Reset the counter after every success.
+		// If fail 2 times consecutively, start doing exponential backoff before retrying again.
+		failCount := 0
+
+		for len(failedQueries) > 0 {
+			// Get a failed query from the beginning of the queue
+			q := failedQueries[0]
+			failedQueries = failedQueries[1:]
+
 			fq, err := ChunkedFilterLogs(ctx, client, q.Addresses, q.FromBlock.Uint64(), q.ToBlock.Uint64(), logs, nil)
 			if err != nil {
-				log.Error().Uint64("from", q.FromBlock.Uint64()).Uint64("to", q.ToBlock.Uint64()).Msg("some intervals failed during backfill retry..")
+				log.Warn().Err(err).Uint64("from", q.FromBlock.Uint64()).Uint64("to", q.ToBlock.Uint64()).Msg("some intervals failed during backfill, retrying...")
 			}
-			for _, q2 := range fq {
-				log.Error().Uint64("from", q2.FromBlock.Uint64()).Uint64("to", q2.ToBlock.Uint64()).Msg("aborting failed backfill interval.")
+
+			if len(fq) > 0 {
+				// Put failed queries to the end of the queue to retry later
+				failedQueries = append(failedQueries, fq...)
+				failCount++
+			} else {
+				failCount = 0
+			}
+
+			if failCount >= 2 {
+				// After first failure, do exponential backoff with 10% jitter
+				backoff := float64(int(1) << (failCount - 2))
+				backoff += backoff * (0.1 * rand.Float64())
+				select {
+				case <-ctx.Done():
+					for _, fq := range failedQueries {
+						log.Error().Err(ctx.Err()).Uint64("from", fq.FromBlock.Uint64()).Uint64("to", fq.ToBlock.Uint64()).Msg("aborting failed backfill interval")
+					}
+					return
+				case <-time.After(time.Second * time.Duration(backoff)):
+					continue
+				}
 			}
 		}
 	}(ch)
