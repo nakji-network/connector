@@ -272,7 +272,7 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 		}
 
 		// Count the number of consecutive failures. Reset the counter after every success.
-		// If fail 2 times consecutively, start doing exponential backoff before retry again.
+		// If fail 2 times consecutively, start doing exponential backoff before retrying again.
 		failCount := 0
 
 		for len(failedQueries) > 0 {
@@ -286,7 +286,7 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 			}
 
 			if len(fq) > 0 {
-				// Put failed queries to the end of queue to retry later
+				// Put failed queries to the end of the queue to retry later
 				failedQueries = append(failedQueries, fq...)
 				failCount++
 			} else {
@@ -294,7 +294,7 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 			}
 
 			if failCount >= 2 {
-				// Do exponential backoff with 10% jitter
+				// After first failure, do exponential backoff with 10% jitter
 				backoff := float64(int(1) << (failCount - 2))
 				backoff += backoff * (0.1 * rand.Float64())
 				select {
