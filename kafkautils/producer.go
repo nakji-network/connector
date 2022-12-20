@@ -3,6 +3,7 @@ package kafkautils
 import (
 	"context"
 	"fmt"
+	"log/syslog"
 	"os"
 	"time"
 
@@ -60,6 +61,8 @@ func NewProducer(brokers, transactionalID string) (*Producer, error) {
 		"transaction.timeout.ms": KafkaProducerTransactionTimeoutMS,
 		"queue.buffering.max.ms": KafkaProducerQueueBufferingMaxMS,
 		"compression.codec":      "snappy",
+		"go.logs.channel.enable": true,
+		"log_level":              0,
 	})
 	if err != nil {
 		return nil, err
@@ -79,6 +82,21 @@ func NewProducer(brokers, transactionalID string) (*Producer, error) {
 		doTerm := false
 		for !doTerm {
 			select {
+			// Listen to Kafka log channel
+			case vLog := <-p.Logs():
+				switch syslog.Priority(vLog.Level) {
+				case syslog.LOG_EMERG, syslog.LOG_CRIT, syslog.LOG_ERR:
+					log.Error().Time("timestamp", vLog.Timestamp).Str("name", vLog.Name).Str("tag", vLog.Tag).Msg(vLog.Message)
+				case syslog.LOG_WARNING, syslog.LOG_NOTICE:
+					log.Warn().Time("timestamp", vLog.Timestamp).Str("name", vLog.Name).Str("tag", vLog.Tag).Msg(vLog.Message)
+				case syslog.LOG_INFO:
+					log.Info().Time("timestamp", vLog.Timestamp).Str("name", vLog.Name).Str("tag", vLog.Tag).Msg(vLog.Message)
+				case syslog.LOG_DEBUG:
+					log.Debug().Time("timestamp", vLog.Timestamp).Str("name", vLog.Name).Str("tag", vLog.Tag).Msg(vLog.Message)
+				default:
+					log.Error().Int("level", vLog.Level).Time("timestamp", vLog.Timestamp).Str("name", vLog.Name).Str("tag", vLog.Tag).Msg(vLog.Message)
+				}
+
 			case e := <-p.Events():
 				switch ev := e.(type) {
 				case *kafka.Message:
