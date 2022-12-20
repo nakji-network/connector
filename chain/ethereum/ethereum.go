@@ -162,7 +162,6 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			log.Error().Err(err).Msg("hit RPC rate limit")
 			return nil, err
 		}
-		log.Error().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Msg("skipping failed backfill interval...")
 		failedQueries = append(failedQueries, query)
 	}
 

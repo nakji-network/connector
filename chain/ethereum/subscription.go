@@ -179,9 +179,6 @@ func (s *Subscription) Close() {
 func (s *Subscription) getBlockTimeFromChain(ctx context.Context, blockHash common.Hash) (uint64, error) {
 	header, err := s.client.HeaderByHash(ctx, blockHash)
 	if err != nil {
-		if header != nil {
-			log.Error().Err(err).Uint64("block", header.Number.Uint64()).Msg("failed to retrieve header")
-		}
 		return 0, err
 	}
 	return header.Time, nil
