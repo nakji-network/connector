@@ -217,11 +217,13 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 		case header := <-headers:
 			//	Start a backfill when there are missing blocks
 			if s.latestBlockNumber != nil && header.Number.Uint64()-s.latestBlockNumber.Uint64() > 1 {
-				if backfillLogs, err := HistoricalEvents(ctx, s.client, s.addresses, s.latestBlockNumber.Uint64(), header.Number.Uint64()); err == nil {
-					for bfLog := range backfillLogs {
-						s.inLogs <- bfLog
+				go func(c context.Context, cl *ethclient.Client, adr []common.Address, fromBl, toBl uint64) {
+					if backfillLogs, _ := HistoricalEvents(c, cl, adr, fromBl, toBl); err == nil {
+						for bfLog := range backfillLogs {
+							s.inLogs <- bfLog
+						}
 					}
-				}
+				}(ctx, s.client, s.addresses, s.latestBlockNumber.Uint64(), header.Number.Uint64())
 			}
 
 			s.cache.ContainsOrAdd(header.Hash().Hex(), header.Time)
