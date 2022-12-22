@@ -218,7 +218,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 			//	Start a backfill when there are missing blocks
 			if s.latestBlockNumber != nil && header.Number.Uint64()-s.latestBlockNumber.Uint64() > 1 {
 				go func(c context.Context, cl *ethclient.Client, adr []common.Address, fromBl, toBl uint64) {
-					if backfillLogs, err := HistoricalEvents(c, cl, adr, fromBl, toBl); err == nil {
+					if backfillLogs, _ := HistoricalEvents(c, cl, adr, fromBl, toBl); err == nil {
 						for bfLog := range backfillLogs {
 							s.inLogs <- bfLog
 						}
