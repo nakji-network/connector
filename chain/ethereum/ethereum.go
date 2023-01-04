@@ -221,10 +221,14 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 
 	logs, err := client.FilterLogs(ctx, query)
 	if err != nil {
-		log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Uint("backoff minutes", backoff).Msg("retrying interval")
-		time.Sleep(time.Duration(backoff) * time.Minute)
-		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logChan, backoff<<1)
-		return
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Duration(backoff) * time.Minute):
+			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Uint("backoff minutes", backoff).Msg("retrying interval")
+			BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logChan, backoff<<1)
+			return
+		}
 	}
 
 	for _, l := range logs {
