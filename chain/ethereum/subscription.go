@@ -32,7 +32,7 @@ const (
 
 type ISubscription interface {
 	AddAddress(common.Address, kafkautils.MsgType)
-	Done() <-chan bool
+	Done() <-chan struct{}
 	Err() <-chan error
 	GetBlockTime(context.Context, types.Log) (uint64, error)
 	TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, error)
@@ -45,7 +45,7 @@ type ISubscription interface {
 
 type Subscription struct {
 	interrupt   chan os.Signal //	Shutdown signal for connector
-	done        chan bool      //	Channel to signal ongoing subscriptions
+	done        chan struct{}  //	Channel to signal ongoing subscriptions
 	resubscribe chan bool      //	Channel to signal for resubscribing to logs
 
 	//	Blockchain chain
@@ -77,7 +77,7 @@ func NewSubscription(client *ethclient.Client, chain string, addresses []common.
 		addresses:        addresses,
 		client:           client,
 		chain:            chain,
-		done:             make(chan bool, 1),
+		done:             make(chan struct{}, 1),
 		interrupt:        make(chan os.Signal, 1),
 		resubscribe:      make(chan bool, 1),
 		inErr:            make(chan error, 1),
@@ -103,7 +103,7 @@ func NewSubscription(client *ethclient.Client, chain string, addresses []common.
 
 	go func() {
 		<-s.interrupt
-		s.done <- true
+		close(s.done)
 	}()
 
 	return &s, nil
@@ -128,7 +128,7 @@ func (s *Subscription) AddAddress(address common.Address, msgType kafkautils.Msg
 	}
 }
 
-func (s *Subscription) Done() <-chan bool {
+func (s *Subscription) Done() <-chan struct{} {
 	return s.done
 }
 
@@ -163,7 +163,7 @@ func (s *Subscription) Logs() <-chan Log {
 // Close closes subscriptions and open channels.
 func (s *Subscription) Close() {
 	log.Info().Str("chain", s.chain).Msg("shutting down subscription")
-	s.done <- true
+	close(s.done)
 	if s.headers != nil {
 		close(s.headers)
 	}
@@ -201,7 +201,6 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 	for {
 		select {
 		case <-s.Done():
-			s.done <- true
 			return
 
 		case err := <-hs.Err():
@@ -259,7 +258,6 @@ func (s *Subscription) subscribeLogs(ctx context.Context) {
 			return
 
 		case <-s.Done():
-			s.done <- true
 			return
 
 		case err = <-s.inErr:
