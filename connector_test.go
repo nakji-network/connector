@@ -18,7 +18,7 @@ func TestGenerateTopicFromProto(t *testing.T) {
 		},
 	}
 	got := c.generateTopicFromProto(kafkautils.MsgTypeFct, &Transaction{}).String()
-	want := "test.fct.nakji.ethereum.0_0_0.ethereum_Transaction"
+	want := "test.fct.nakji.ethereum.0_0_0.ethereum_Transaction1"
 	if got != want {
 		t.Errorf("Error generating topic from proto: got=%q want=%q", got, want)
 	}
