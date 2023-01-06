@@ -1,10 +1,14 @@
 package kafkautils
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 var mockTTR TTR
 
-func TestMain(*testing.M) {
+func TestMain(m *testing.M) {
 	mockTTR = make(TTR)
 	mockTTR.Load(testTopicTypes)
+	os.Exit(m.Run())
 }
