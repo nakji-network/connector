@@ -10,16 +10,6 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-// func init() {
-// 	var TopicTypes = map[string]proto.Message{
-// 		"parsley":                            &Petersilie{},
-// 		"blep.test.1_2_3.mycontract_parsley": &Petersilie{},
-// 		"blep.test.3_2_1.mycontract_parsley": &Petersilie{},
-// 	}
-
-// 	TopicTypeRegistry.Load(TopicTypes)
-// }
-
 func TestParseTopic(t *testing.T) {
 	type args struct {
 		s string

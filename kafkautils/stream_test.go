@@ -44,10 +44,6 @@ func TestNewSchema(t *testing.T) {
 				Period:    "1h",
 			},
 		},
-		// {
-		// 	input: "wrong.schema",
-		// 	want:  nil,
-		// },
 	} {
 		res, _ := NewSchema(testCase.input)
 		if (res == nil && testCase.want == nil) && testCase.want.Author != res.Author ||
