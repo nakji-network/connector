@@ -38,8 +38,10 @@ func NewSchema(schema string) (*StreamName, error) {
 		Event:     contractEvent[1],
 	}
 
-	aggregation := strings.SplitAfterN(contractEvent[1], TopicAggregateSeparator, 2)
+	aggregation := strings.Split(contractEvent[1], TopicAggregateSeparator)
+
 	if len(aggregation) > 1 {
+		s.Event = aggregation[0]
 		s.Period = aggregation[1]
 	}
 

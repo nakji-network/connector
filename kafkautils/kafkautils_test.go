@@ -5,10 +5,9 @@ import (
 	"testing"
 )
 
-var mockTTR TTR
+// var mockTTR TTR
 
 func TestMain(m *testing.M) {
-	mockTTR = make(TTR)
-	mockTTR.Load(testTopicTypes)
+	TopicTypeRegistry.Load(testTopicTypes)
 	os.Exit(m.Run())
 }
