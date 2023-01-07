@@ -16,8 +16,6 @@ var testTopicTypes = map[string]proto.Message{
 }
 
 func TestSet(t *testing.T) {
-	t.Parallel()
-
 	for _, testCase := range []string{
 		"satoshi.common.0_0_0.bitcoin_tx",
 		"satoshi.common.0_0_0.bitcoin_block",
@@ -27,8 +25,6 @@ func TestSet(t *testing.T) {
 }
 
 func TestGet(t *testing.T) {
-	t.Parallel()
-
 	for _, testCase := range []struct {
 		input string
 		want  proto.Message
@@ -50,8 +46,6 @@ func TestGet(t *testing.T) {
 }
 
 func TestGetActiveSchemas(t *testing.T) {
-	t.Parallel()
-
 	for _, testCase := range []struct {
 		input []string
 		want  map[string]bool
