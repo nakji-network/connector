@@ -3,6 +3,7 @@ package connector
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ type Connector struct {
 	manifest          *manifest
 	producerStarted   bool
 	protoRegistryHost string
+	isBackfill        bool
 
 	RPCMap map[string]chain.RPCs
 	Config *viper.Viper
@@ -68,6 +70,7 @@ func NewConnector(options ...Option) (*Connector, error) {
 		Health:            healthcheck.NewHandler(),
 		RPCMap:            rpcMap,
 		protoRegistryHost: conf.GetString("protoregistry.host"),
+		isBackfill:        false,
 	}
 
 	parseOptions(c, options...)
@@ -118,6 +121,12 @@ func parseOptions(c *Connector, options ...Option) {
 func WithManifest(m *manifest) Option {
 	return func(c *Connector) {
 		c.manifest = m
+	}
+}
+
+func BackfillOption() Option {
+	return func(c *Connector) {
+		c.isBackfill = true
 	}
 }
 
@@ -188,16 +197,16 @@ func (c *Connector) SubscribeExample() error {
 	return nil
 }
 
-//	DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
-//	ProduceMessage sends protobuf to message queue with a Topic and Key.
+// DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
+// ProduceMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceMessage(namespace, subject string, msgType kafkautils.MsgType, msg proto.Message) error {
 	topic := c.generateTopicFromProto(msgType, msg)
 	key := kafkautils.NewKey(namespace, subject)
 	return c.ProduceMsg(context.TODO(), topic.String(), msg, key.Bytes(), nil)
 }
 
-//	DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
-//	ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
+// DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
+// ProduceAndCommitMessage sends protobuf to message queue with a Topic and Key.
 func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msgType kafkautils.MsgType, msg proto.Message) error {
 	if !c.producerStarted {
 		err := c.startProducer()
@@ -233,6 +242,10 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msgType k
 // startProducer() creates a new kafka producer with transactions enabled.
 func (c *Connector) startProducer() error {
 	txID := c.id()
+
+	if c.isBackfill {
+		txID = fmt.Sprintf("%s%d", txID, rand.Int())
+	}
 
 	log.Info().
 		Str("transactionID", txID).
@@ -311,10 +324,10 @@ func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.
 	return tt
 }
 
-//	DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
-//	initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
-//	It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
-//	NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
+// DEPRECATED, this function will be removed in a future release. Please use ProduceWithTransaction instead.
+// initProduceChannel uses the incoming messages from protobuf message channel and forwards them to Kafka.
+// It wraps each message in a Kafka Transaction to ensure Exactly Once Semantics.
+// NOTE: this wraps individual messages with transactions so it adds a lot of overhead to kafka and reduces the usefulness of transactions
 func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 
 	c.startProducer()
@@ -335,8 +348,8 @@ func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 	}
 }
 
-//	ProduceWithTransaction wraps a slice of messages in a kafka transaction.
-//	Produced messages will be pushed to kafka altogether or fail all at once.
+// ProduceWithTransaction wraps a slice of messages in a kafka transaction.
+// Produced messages will be pushed to kafka altogether or fail all at once.
 func (c *Connector) ProduceWithTransaction(messages []*kafkautils.Message) error {
 	if !c.producerStarted {
 		c.startProducer()
