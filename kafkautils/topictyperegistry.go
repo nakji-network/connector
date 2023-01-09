@@ -35,7 +35,7 @@ func (r TTR) Get(schema string) proto.Message {
 
 // Set schema in TTR. Fatal error if invalid key.
 func (r TTR) Set(key string, value proto.Message) {
-	match, err := regexp.MatchString(`^[a-z]*(?:-\*)?$`, key)
+	match, err := regexp.MatchString(`^[a-z0-9._]*(?:-\*)?$`, key)
 	if err != nil || !match {
 		log.Fatalf("Attempted to set invalid topic: %s", key)
 	}

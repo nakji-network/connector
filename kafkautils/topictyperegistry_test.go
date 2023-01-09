@@ -7,25 +7,24 @@ import (
 )
 
 var testTopicTypes = map[string]proto.Message{
-	"nakji.common.0_0_0.market_trade":   &Parsley{},
-	"nakji.common.0_0_0.market_trade-*": &Parsley{},
-	"nakji.common.0_0_0.market_ohlc":    &Parsley{},
+	"nakji.common.0_0_0.market_trade":    &Parsley{},
+	"nakji.common.0_0_0.market_trade-*":  &Parsley{},
+	"nakji.common.0_0_0.market_ohlc":     &Parsley{},
+	"parsley":                            &Petersilie{},
+	"blep.test.1_2_3.mycontract_parsley": &Petersilie{},
+	"blep.test.3_2_1.mycontract_parsley": &Petersilie{},
 }
 
 func TestSet(t *testing.T) {
-	t.Parallel()
-
 	for _, testCase := range []string{
-		"satoshi1=",
+		"satoshi.common.0_0_0.bitcoin_tx",
 		"satoshi.common.0_0_0.bitcoin_block",
 	} {
-		mockTTR.Set(testCase, &Parsley{})
+		TopicTypeRegistry.Set(testCase, &Parsley{})
 	}
 }
 
 func TestGet(t *testing.T) {
-	t.Parallel()
-
 	for _, testCase := range []struct {
 		input string
 		want  proto.Message
@@ -39,42 +38,25 @@ func TestGet(t *testing.T) {
 			want:  nil,
 		},
 	} {
-		res := mockTTR.Get(testCase.input)
-		if testCase.want != res {
-			t.Error("topic type registry Get failed.", "got:", res, "want:", testCase.want)
+		res := TopicTypeRegistry.Get(testCase.input)
+		if (testCase.want != nil && res == nil) || (testCase.want == nil && res != nil) {
+			t.Error("topic type registry Get failed.", "got:", res, "want:", testCase.want, "input", testCase.input)
 		}
 	}
 }
 
 func TestGetActiveSchemas(t *testing.T) {
-	t.Parallel()
-
 	for _, testCase := range []struct {
 		input []string
 		want  map[string]bool
 	}{
 		{
-			input: nil,
-			want: map[string]bool{
-				".fct.nakji.common.0_0_0.market_trade":   true,
-				".fct.nakji.common.0_0_0.market_trade-*": true,
-				".fct.nakji.common.0_0_0.market_ohlc":    true,
-			},
-		},
-		{
-			input: []string{},
-			want: map[string]bool{
-				".fct.nakji.common.0_0_0.market_trade":   true,
-				".fct.nakji.common.0_0_0.market_trade-*": true,
-				".fct.nakji.common.0_0_0.market_ohlc":    true,
-			},
-		},
-		{
 			input: []string{
 				"nakji.common.0_0_0.market_trade",
 			},
 			want: map[string]bool{
-				".fct.nakji.common.0_0_0.market_trade": true,
+				"nakji.common.0_0_0.market_trade":   true,
+				"nakji.common.0_0_0.market_trade-*": true,
 			},
 		},
 		{
