@@ -242,11 +242,13 @@ func (c *Connector) ProduceAndCommitMessage(namespace, subject string, msgType k
 
 // startProducer() creates a new kafka producer with transactions enabled.
 func (c *Connector) startProducer() error {
-	txID := c.id()
+	var txID string
 
 	if c.isBackfill {
 		n, _ := rand.Int(rand.Reader, big.NewInt(999999))
-		txID = fmt.Sprintf("%s%d", txID, n)
+		txID = fmt.Sprintf("%s-backfill-%d", c.id(), n)
+	} else {
+		txID = fmt.Sprintf("%s-realtime", c.id())
 	}
 
 	log.Info().
@@ -354,7 +356,9 @@ func (c *Connector) initProduceChannel(input <-chan *kafkautils.Message) {
 // Produced messages will be pushed to kafka altogether or fail all at once.
 func (c *Connector) ProduceWithTransaction(messages []*kafkautils.Message) error {
 	if !c.producerStarted {
-		c.startProducer()
+		if err := c.startProducer(); err != nil {
+			return err
+		}
 	}
 
 	c.mu.Lock()
