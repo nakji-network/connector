@@ -2,8 +2,9 @@ package connector
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"sync"
 	"time"
@@ -244,7 +245,8 @@ func (c *Connector) startProducer() error {
 	txID := c.id()
 
 	if c.isBackfill {
-		txID = fmt.Sprintf("%s%d", txID, rand.Int())
+		n, _ := rand.Int(rand.Reader, big.NewInt(999999))
+		txID = fmt.Sprintf("%s%d", txID, n)
 	}
 
 	log.Info().
