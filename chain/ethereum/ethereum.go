@@ -35,6 +35,11 @@ type Connector struct {
 	Sub    ISubscription
 }
 
+const (
+	addressChunkSize int    = 7350 // Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
+	blockChunkSize   uint64 = 3000 // Some RPC nodes limit to 2000 but most allow 3000
+)
+
 // NewConnector returns an evm-compatible connector connected to websockets RPC
 func NewConnector(ctx context.Context, addresses []common.Address, chain string) *Connector {
 	c, err := connector.NewConnector()
@@ -83,15 +88,12 @@ func ChunkedSubscribeFilterLogs(ctx context.Context, client ETHClient, addresses
 		subs = make([]ethereum.Subscription, 0)
 	}
 
-	// Split filterlog subscriptions into 7350 contracts due to json-rpc limitation (undocumented)
-	const chunkSize int = 7350
-
-	if len(addresses) > chunkSize {
-		s, err := ChunkedSubscribeFilterLogs(ctx, client, addresses[:chunkSize], logChan, errChan, subs)
+	if len(addresses) > addressChunkSize {
+		s, err := ChunkedSubscribeFilterLogs(ctx, client, addresses[:addressChunkSize], logChan, errChan, subs)
 		if err != nil {
 			return nil, err
 		}
-		return ChunkedSubscribeFilterLogs(ctx, client, addresses[chunkSize:], logChan, errChan, s)
+		return ChunkedSubscribeFilterLogs(ctx, client, addresses[addressChunkSize:], logChan, errChan, s)
 	}
 
 	q := ethereum.FilterQuery{
@@ -118,12 +120,6 @@ func ChunkedSubscribeFilterLogs(ctx context.Context, client ETHClient, addresses
 // The results are later fed into a log chan that was provided by the caller.
 // Failed query intervals are fed into another channel to allow the caller to retry later.
 func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, failedQueries []ethereum.FilterQuery) ([]ethereum.FilterQuery, error) {
-	// Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
-	const (
-		addressChunkSize int    = 7350
-		blockChunkSize   uint64 = 50
-	)
-
 	var err error
 
 	if failedQueries == nil {
@@ -163,14 +159,23 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			return nil, err
 		}
 		log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Msg("skipping failed backfill interval...")
-		failedQueries = append(failedQueries, query)
+
+		mid := (query.FromBlock.Uint64() + query.ToBlock.Uint64()) / 2
+
+		q1 := query
+		q1.ToBlock = big.NewInt(int64(mid))
+		failedQueries = append(failedQueries, q1)
+
+		q2 := query
+		q2.FromBlock = big.NewInt(int64(mid))
+		failedQueries = append(failedQueries, q2)
 	}
 
 	for _, l := range logs {
 		logChan <- l
 	}
 
-	return failedQueries, err
+	return failedQueries, nil
 }
 
 // DEPRECATED, this function will be removed in a future release. Please use HistoricalEvents instead.
