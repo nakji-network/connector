@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/ethclient"
 
 	// "github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -74,4 +75,52 @@ func TestChunkedFilterLogs(t *testing.T) {
 	}()
 
 	ChunkedFilterLogs(context.Background(), mockETHClient, addr, fromBlock, toBlock, logch, nil)
+}
+
+func TestHistoricalEvents(t *testing.T) {
+	client, err := ethclient.DialContext(context.Background(), RPC[0])
+	if err != nil {
+		t.Errorf("RPC connection error: %s", err)
+	}
+
+	for _, testCase := range []struct {
+		fromBlock  uint64
+		toBlock    uint64
+		addresses  []common.Address
+		eventCount int // There are this many logs between these intervals
+	}{
+		// Public RPC nodes can limit how further you can go back for historical data.
+		// fromBlock and toBlock fields may need to be updated with more recent blocks.
+
+		{
+			fromBlock: 16455610,
+			toBlock:   16455712,
+			addresses: []common.Address{
+				common.HexToAddress("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"), // ETH token
+			},
+			eventCount: 4363,
+		},
+		{
+			fromBlock: 16445610,
+			toBlock:   16455712,
+			addresses: []common.Address{
+				common.HexToAddress("0x1F98431c8aD98523631AE4a59f267346ea31F984"), // UniswapV3 factory address
+			},
+			eventCount: 12,
+		},
+	} {
+		logchan, err := HistoricalEvents(context.Background(), client, testCase.addresses, testCase.fromBlock, testCase.toBlock)
+		if err != nil {
+			t.Errorf("HistoricalEvents error: %s", err)
+		}
+
+		i := 0
+		for range logchan {
+			i++
+		}
+
+		if i != testCase.eventCount {
+			t.Errorf("HistoricalEvents event counts don't match, got: %d, want: %d", i, testCase.eventCount)
+		}
+	}
 }
