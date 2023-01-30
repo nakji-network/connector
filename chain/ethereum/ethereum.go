@@ -160,6 +160,11 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 		}
 		log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Msg("skipping failed backfill interval...")
 
+		// Node providers may refuse the request if they deem it too large.
+		// It could be block range, number of events or just response size.
+		// Here, the call is divided into two, so that it can go through.
+		// If the problem is with some specific block range,
+		// this will also process the good blocks in a binary search fashion.
 		mid := (query.FromBlock.Uint64() + query.ToBlock.Uint64()) / 2
 
 		q1 := query
