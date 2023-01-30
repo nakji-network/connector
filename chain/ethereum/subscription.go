@@ -328,6 +328,7 @@ func isRetryable(err error) bool {
 	// error 3: websocket: close 1006 (abnormal closure)
 	// error 4: unexpected EOF
 	// error 5: websocket: close 1001 (going away): upstream went away
+	// error 6: i/o timeout
 	if err == nil {
 		return false
 	}
@@ -335,7 +336,8 @@ func isRetryable(err error) bool {
 		strings.Contains(err.Error(), "reset") ||
 		strings.Contains(err.Error(), "1006") ||
 		strings.Contains(err.Error(), "EOF") ||
-		strings.Contains(err.Error(), "1001")
+		strings.Contains(err.Error(), "1001") ||
+		strings.Contains(err.Error(), "timeout")
 }
 
 func (s *Subscription) TransactionByHash(ctx context.Context, hash common.Hash) (*types.Transaction, error) {
