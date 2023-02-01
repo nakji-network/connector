@@ -41,8 +41,8 @@ const (
 )
 
 // NewConnector returns an evm-compatible connector connected to websockets RPC
-func NewConnector(ctx context.Context, addresses []common.Address, chain string) *Connector {
-	c, err := connector.NewConnector()
+func NewConnector(ctx context.Context, addresses []common.Address, chain string, opts ...connector.Option) *Connector {
+	c, err := connector.NewConnector(opts...)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate nakji connector")
 	}
