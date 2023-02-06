@@ -189,25 +189,19 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 // The results are later fed into a log chan that was provided by the caller.
 // Failed query intervals are retried after a backoff period, increased exponentially.
 func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, backoff uint) {
-	// Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
-	const (
-		addressBatchSize int    = 7350
-		blockBatchSize   uint64 = 50
-	)
-
 	if backoff == 0 {
 		backoff = 1
 	}
 
-	if len(addresses) > addressBatchSize {
-		BatchedFilterLogs(ctx, client, addresses[:addressBatchSize], fromBlock, toBlock, logChan, backoff)
-		BatchedFilterLogs(ctx, client, addresses[addressBatchSize:], fromBlock, toBlock, logChan, backoff)
+	if len(addresses) > addressChunkSize {
+		BatchedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, backoff)
+		BatchedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, backoff)
 		return
 	}
 
-	if toBlock-fromBlock > blockBatchSize {
-		BatchedFilterLogs(ctx, client, addresses, toBlock-blockBatchSize, toBlock, logChan, backoff)
-		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockBatchSize-1, logChan, backoff)
+	if toBlock-fromBlock > blockChunkSize {
+		BatchedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, backoff)
+		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, backoff)
 		return
 	}
 
@@ -226,9 +220,21 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			return
 		case <-time.After(time.Duration(backoff) * time.Minute):
 			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Uint("backoff minutes", backoff).Msg("retrying interval")
-			BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logChan, backoff<<1)
+
+			// Node providers may refuse the request if they deem it too large.
+			// It could be block range, number of events or just response size.
+			// Here, the call is divided into two, so that it can go through.
+			// If the problem is with some specific block range,
+			// this will also process the good blocks in a binary search fashion.
+			mid := (query.FromBlock.Uint64() + query.ToBlock.Uint64()) / 2
+			BatchedFilterLogs(ctx, client, addresses, fromBlock, mid, logChan, backoff<<1)
+			BatchedFilterLogs(ctx, client, addresses, mid, toBlock, logChan, backoff<<1)
 			return
 		}
+	}
+
+	if backoff > 1 {
+		backoff = 1
 	}
 
 	for _, l := range logs {
@@ -429,23 +435,26 @@ func BackfillEvents(ctx context.Context, client *ethclient.Client, addresses []c
 // * fromBlock > 0 && numBlocks = 0 => Backfill from fromBlock to current latest block
 // * fromBlock = 0 && numBlocks > 0 => Backfill last numBlocks blocks
 func BackfillEventsWithQueryParams(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, numBlocks uint64) (<-chan types.Log, error) {
-	if fromBlock > 0 && numBlocks > 0 {
-		return BackfillEvents(ctx, client, addresses, fromBlock, fromBlock+numBlocks), nil
-	}
-
 	ch := make(chan types.Log)
 	defer close(ch)
 
-	toBlock, err := client.BlockNumber(ctx)
+	latestBlockNumber, err := client.BlockNumber(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get block number")
 		return ch, err
 	}
 
+	if fromBlock > 0 && numBlocks > 0 {
+		if fromBlock+numBlocks > latestBlockNumber {
+			return BackfillEvents(ctx, client, addresses, fromBlock, latestBlockNumber), nil
+		}
+		return BackfillEvents(ctx, client, addresses, fromBlock, fromBlock+numBlocks), nil
+	}
+
 	if fromBlock > 0 && numBlocks == 0 {
-		return BackfillEvents(ctx, client, addresses, fromBlock, toBlock), nil
+		return BackfillEvents(ctx, client, addresses, fromBlock, latestBlockNumber), nil
 	} else if fromBlock == 0 && numBlocks > 0 {
-		return BackfillEvents(ctx, client, addresses, toBlock-numBlocks, toBlock), nil
+		return BackfillEvents(ctx, client, addresses, latestBlockNumber-numBlocks, latestBlockNumber), nil
 	}
 
 	return ch, nil
