@@ -37,7 +37,7 @@ type Connector struct {
 
 const (
 	addressChunkSize int    = 7350 // Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
-	blockChunkSize   uint64 = 3000 // Some RPC nodes limit to 2000 but most allow 3000
+	blockChunkSize   uint64 = 1000 // Some RPC nodes limit to 2000 but there are also event count and/or response size limitations.
 )
 
 // NewConnector returns an evm-compatible connector connected to websockets RPC
