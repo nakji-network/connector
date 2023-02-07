@@ -232,6 +232,7 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			mid := (query.FromBlock.Uint64() + query.ToBlock.Uint64()) / 2
 			BatchedFilterLogs(ctx, client, addresses, fromBlock, mid, logChan, backoff<<1)
 			BatchedFilterLogs(ctx, client, addresses, mid, toBlock, logChan, backoff<<1)
+			return
 		}
 	}
 
