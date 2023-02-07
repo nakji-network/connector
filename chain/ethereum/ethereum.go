@@ -36,8 +36,10 @@ type Connector struct {
 }
 
 const (
-	addressChunkSize int    = 7350 // Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
-	blockChunkSize   uint64 = 1000 // Some RPC nodes limit to 2000 but there are also event count and/or response size limitations.
+	addressChunkSize       int    = 7350        // Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
+	blockChunkSize         uint64 = 2000        // Some RPC nodes limit to 2000 but there are also event count and/or response size limitations.
+	initialBackoffDuration        = time.Second // Initial backoff duration before re-hitting RPC node
+	maxBackoffDuration            = time.Hour   // Maximum backoff duration before resetting
 )
 
 // NewConnector returns an evm-compatible connector connected to websockets RPC
@@ -188,11 +190,12 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 // It slices addresses and total number of blocks with pre-defined batch size.
 // The results are later fed into a log chan that was provided by the caller.
 // Failed query intervals are retried after a backoff period, increased exponentially.
-func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, backoff uint) {
-	if backoff == 0 {
-		backoff = 1
+func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, backoff time.Duration) {
+	if backoff == 0 || backoff > maxBackoffDuration {
+		backoff = initialBackoffDuration
 	}
 
+	//	Slice and dice whole block interval and smart contract address count so that they fit into predefined maximums.
 	if len(addresses) > addressChunkSize {
 		BatchedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, backoff)
 		BatchedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, backoff)
@@ -218,8 +221,8 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(time.Duration(backoff) * time.Minute):
-			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Uint("backoff minutes", backoff).Msg("retrying interval")
+		case <-time.After(backoff):
+			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Str("backoff", backoff.String()).Msg("retrying interval")
 
 			// Node providers may refuse the request if they deem it too large.
 			// It could be block range, number of events or just response size.
@@ -229,12 +232,12 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			mid := (query.FromBlock.Uint64() + query.ToBlock.Uint64()) / 2
 			BatchedFilterLogs(ctx, client, addresses, fromBlock, mid, logChan, backoff<<1)
 			BatchedFilterLogs(ctx, client, addresses, mid, toBlock, logChan, backoff<<1)
-			return
 		}
 	}
 
-	if backoff > 1 {
-		backoff = 1
+	//	Reset backoff after a successful call
+	if backoff > initialBackoffDuration {
+		backoff = initialBackoffDuration
 	}
 
 	for _, l := range logs {
@@ -422,7 +425,7 @@ func BackfillEvents(ctx context.Context, client *ethclient.Client, addresses []c
 	}
 
 	go func(logs chan types.Log) {
-		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, 1)
+		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, 0)
 		close(logs)
 	}(ch)
 
