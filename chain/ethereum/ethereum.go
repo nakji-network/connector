@@ -36,8 +36,10 @@ type Connector struct {
 }
 
 const (
-	addressChunkSize int    = 7350 // Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
-	blockChunkSize   uint64 = 1000 // Some RPC nodes limit to 2000 but there are also event count and/or response size limitations.
+	addressChunkSize       int    = 7350        // Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
+	blockChunkSize         uint64 = 2000        // Some RPC nodes limit to 2000 but there are also event count and/or response size limitations.
+	initialBackoffDuration        = time.Second // Initial backoff duration before re-hitting RPC node
+	maxBackoffDuration            = time.Hour   // Maximum backoff duration before resetting
 )
 
 // NewConnector returns an evm-compatible connector connected to websockets RPC
@@ -115,6 +117,7 @@ func ChunkedSubscribeFilterLogs(ctx context.Context, client ETHClient, addresses
 	return subs, nil
 }
 
+// DEPRECATED, this function will be removed in a future release. Please use BatchedFilterLogs instead.
 // ChunkedFilterLogs queries the blockchain for past events in batches.
 // It slices addresses and total number of blocks with pre-defined batch size.
 // The results are later fed into a log chan that was provided by the caller.
@@ -183,6 +186,66 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 	return failedQueries, nil
 }
 
+// BatchedFilterLogs queries the blockchain for past events in batches.
+// It slices addresses and total number of blocks with pre-defined batch size.
+// The results are later fed into a log chan that was provided by the caller.
+// Failed query intervals are retried after a backoff period, increased exponentially.
+func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, backoff time.Duration) {
+	if backoff == 0 || backoff > maxBackoffDuration {
+		backoff = initialBackoffDuration
+	}
+
+	//	Slice and dice whole block interval and smart contract address count so that they fit into predefined maximums.
+	if len(addresses) > addressChunkSize {
+		BatchedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, backoff)
+		BatchedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, backoff)
+		return
+	}
+
+	if toBlock-fromBlock > blockChunkSize {
+		BatchedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, backoff)
+		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, backoff)
+		return
+	}
+
+	log.Debug().Uint64("from", fromBlock).Uint64("to", toBlock).Msg("retrieving historical events...")
+
+	query := ethereum.FilterQuery{
+		FromBlock: big.NewInt(int64(fromBlock)),
+		ToBlock:   big.NewInt(int64(toBlock)),
+		Addresses: addresses,
+	}
+
+	logs, err := client.FilterLogs(ctx, query)
+	if err != nil {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Str("backoff", backoff.String()).Msg("retrying interval")
+
+			// Node providers may refuse the request if they deem it too large.
+			// It could be block range, number of events or just response size.
+			// Here, the call is divided into two, so that it can go through.
+			// If the problem is with some specific block range,
+			// this will also process the good blocks in a binary search fashion.
+			mid := (query.FromBlock.Uint64() + query.ToBlock.Uint64()) / 2
+			BatchedFilterLogs(ctx, client, addresses, fromBlock, mid, logChan, backoff<<1)
+			BatchedFilterLogs(ctx, client, addresses, mid, toBlock, logChan, backoff<<1)
+			return
+		}
+	}
+
+	//	Reset backoff after a successful call
+	if backoff > initialBackoffDuration {
+		backoff = initialBackoffDuration
+	}
+
+	for _, l := range logs {
+		logChan <- l
+	}
+}
+
 // DEPRECATED, this function will be removed in a future release. Please use HistoricalEvents instead.
 // Backfill queries past blocks for the events emitted by the given contract addresses and feeds these events into the event log chan.
 // Use a disposable channel to call this function as the function will close it to signal EOF.
@@ -247,6 +310,7 @@ func BackfillFrom(ctx context.Context, client *ethclient.Client, addresses []com
 	}
 }
 
+// DEPRECATED, this function will be removed in a future release. Please use BackfillEvents instead.
 // HistoricalEvents queries past blocks for the events emitted by the given contract addresses.
 // These events are provided in a channel and ready to be consumed by the caller.
 func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) (<-chan types.Log, error) {
@@ -323,6 +387,7 @@ func HistoricalEvents(ctx context.Context, client *ethclient.Client, addresses [
 	return ch, nil
 }
 
+// DEPRECATED, this function will be removed in a future release. Please use BackfillEventsWithQueryParams instead.
 // HistoricalEventsWithQueryParams queries past blocks for the events emitted by the given contract addresses.
 // These events are provided in a channel and ready to be consumed by the caller.
 // * fromBlock > 0 && numBlocks > 0 => Backfill from fromBlock to fromBlock+numBlocks
@@ -348,4 +413,53 @@ func HistoricalEventsWithQueryParams(ctx context.Context, client *ethclient.Clie
 		close(ch)
 		return ch, nil
 	}
+}
+
+// BackfillEvents queries past blocks for the events emitted by the given contract addresses.
+// These events are provided in a channel and ready to be consumed by the caller.
+func BackfillEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) <-chan types.Log {
+	ch := make(chan types.Log, 1000)
+
+	if fromBlock >= toBlock {
+		close(ch)
+		return ch
+	}
+
+	go func(logs chan types.Log) {
+		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, 0)
+		close(logs)
+	}(ch)
+
+	return ch
+}
+
+// BackfillEventsWithQueryParams queries past blocks for the events emitted by the given contract addresses.
+// These events are provided in a channel and ready to be consumed by the caller.
+// * fromBlock > 0 && numBlocks > 0 => Backfill from fromBlock to fromBlock+numBlocks
+// * fromBlock > 0 && numBlocks = 0 => Backfill from fromBlock to current latest block
+// * fromBlock = 0 && numBlocks > 0 => Backfill last numBlocks blocks
+func BackfillEventsWithQueryParams(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, numBlocks uint64) (<-chan types.Log, error) {
+	ch := make(chan types.Log)
+	defer close(ch)
+
+	latestBlockNumber, err := client.BlockNumber(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("failed to get block number")
+		return ch, err
+	}
+
+	if fromBlock > 0 && numBlocks > 0 {
+		if fromBlock+numBlocks > latestBlockNumber {
+			return BackfillEvents(ctx, client, addresses, fromBlock, latestBlockNumber), nil
+		}
+		return BackfillEvents(ctx, client, addresses, fromBlock, fromBlock+numBlocks), nil
+	}
+
+	if fromBlock > 0 && numBlocks == 0 {
+		return BackfillEvents(ctx, client, addresses, fromBlock, latestBlockNumber), nil
+	} else if fromBlock == 0 && numBlocks > 0 {
+		return BackfillEvents(ctx, client, addresses, latestBlockNumber-numBlocks, latestBlockNumber), nil
+	}
+
+	return ch, nil
 }
