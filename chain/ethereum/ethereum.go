@@ -231,7 +231,7 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			// this will also process the good blocks in a binary search fashion.
 			mid := (query.FromBlock.Uint64() + query.ToBlock.Uint64()) / 2
 			BatchedFilterLogs(ctx, client, addresses, fromBlock, mid, logChan, backoff<<1)
-			BatchedFilterLogs(ctx, client, addresses, mid, toBlock, logChan, backoff<<1)
+			BatchedFilterLogs(ctx, client, addresses, mid+1, toBlock, logChan, backoff<<1)
 			return
 		}
 	}
