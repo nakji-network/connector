@@ -37,7 +37,7 @@ type Connector struct {
 
 const (
 	addressChunkSize       int    = 7350        // Split filterlog queries into 7350 contracts due to json-rpc limitation (undocumented)
-	blockChunkSize         uint64 = 2000        // Some RPC nodes limit to 2000 but there are also event count and/or response size limitations.
+	blockChunkSize         uint64 = 2048        // Some RPC nodes limit to 2000 but there are also event count and/or response size limitations.
 	initialBackoffDuration        = time.Second // Initial backoff duration before re-hitting RPC node
 	maxBackoffDuration            = time.Hour   // Maximum backoff duration before resetting
 )
@@ -191,20 +191,22 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 // The results are later fed into a log chan that was provided by the caller.
 // Failed query intervals are retried after a backoff period, increased exponentially.
 func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, backoff time.Duration) {
-	if backoff == 0 || backoff > maxBackoffDuration {
+	if backoff == 0 {
 		backoff = initialBackoffDuration
+	} else if backoff > maxBackoffDuration {
+		backoff = maxBackoffDuration
 	}
 
 	//	Slice and dice whole block interval and smart contract address count so that they fit into predefined maximums.
-	if len(addresses) > addressChunkSize {
-		BatchedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, backoff)
-		BatchedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, backoff)
-		return
-	}
-
 	if toBlock-fromBlock > blockChunkSize {
 		BatchedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, backoff)
 		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, backoff)
+		return
+	}
+
+	if len(addresses) > addressChunkSize {
+		BatchedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, backoff)
+		BatchedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, backoff)
 		return
 	}
 
@@ -234,11 +236,6 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			BatchedFilterLogs(ctx, client, addresses, mid+1, toBlock, logChan, backoff<<1)
 			return
 		}
-	}
-
-	//	Reset backoff after a successful call
-	if backoff > initialBackoffDuration {
-		backoff = initialBackoffDuration
 	}
 
 	for _, l := range logs {
@@ -453,9 +450,7 @@ func BackfillEventsWithQueryParams(ctx context.Context, client *ethclient.Client
 			return BackfillEvents(ctx, client, addresses, fromBlock, latestBlockNumber), nil
 		}
 		return BackfillEvents(ctx, client, addresses, fromBlock, fromBlock+numBlocks), nil
-	}
-
-	if fromBlock > 0 && numBlocks == 0 {
+	} else if fromBlock > 0 && numBlocks == 0 {
 		return BackfillEvents(ctx, client, addresses, fromBlock, latestBlockNumber), nil
 	} else if fromBlock == 0 && numBlocks > 0 {
 		return BackfillEvents(ctx, client, addresses, latestBlockNumber-numBlocks, latestBlockNumber), nil
