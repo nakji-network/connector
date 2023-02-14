@@ -226,6 +226,11 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 		case <-time.After(backoff):
 			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Str("backoff", backoff.String()).Msg("retrying interval")
 
+			if query.FromBlock.Uint64() == query.ToBlock.Uint64() {
+				BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logChan, backoff<<1)
+				return
+			}
+
 			// Node providers may refuse the request if they deem it too large.
 			// It could be block range, number of events or just response size.
 			// Here, the call is divided into two, so that it can go through.
