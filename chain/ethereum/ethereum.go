@@ -226,6 +226,7 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 		case <-time.After(backoff):
 			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Str("backoff", backoff.String()).Msg("retrying interval")
 
+			// The program will repeat the query to same block at max backoff until resolved or loop infinitely.
 			if query.FromBlock.Uint64() == query.ToBlock.Uint64() {
 				BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logChan, backoff<<1)
 				return
