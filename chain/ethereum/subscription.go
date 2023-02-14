@@ -77,7 +77,7 @@ func NewSubscription(client *ethclient.Client, chain string, addresses []common.
 		addresses:        addresses,
 		client:           client,
 		chain:            chain,
-		done:             make(chan struct{}, 1),
+		done:             make(chan struct{}),
 		interrupt:        make(chan os.Signal, 1),
 		resubscribe:      make(chan bool, 1),
 		inErr:            make(chan error, 1),
