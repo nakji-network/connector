@@ -47,6 +47,8 @@ func (c *Connector) Start() {
 
 	go c.listenCloseSignal(cancel)
 
+	c.RegisterProtos(kafkautils.MsgTypeBf, protos...)
+
 	go c.backfill(ctx, cancel, c.FromBlock, c.NumBlocks)
 
 	//	Only subscribe to the blockchain events when it is not a backfill job
