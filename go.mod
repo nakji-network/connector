@@ -1,6 +1,6 @@
 module github.com/nakji-network/connector
 
-go 1.18
+go 1.20
 
 require (
 	github.com/Masterminds/semver v1.5.0
