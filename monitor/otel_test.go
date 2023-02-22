@@ -20,11 +20,13 @@ func TestMessageCarrier_Get(t *testing.T) {
 			args{
 				&kafka.Message{
 					Headers: []kafka.Header{
-						{"key1",
-							[]byte("value1"),
+						{
+							Key:   "key1",
+							Value: []byte("value1"),
 						},
-						{"key2",
-							[]byte("value2"),
+						{
+							Key:   "key2",
+							Value: []byte("value2"),
 						},
 					},
 				},
@@ -36,11 +38,13 @@ func TestMessageCarrier_Get(t *testing.T) {
 			args{
 				&kafka.Message{
 					Headers: []kafka.Header{
-						{"key1",
-							[]byte("value1"),
+						{
+							Key:   "key1",
+							Value: []byte("value1"),
 						},
-						{"key2",
-							[]byte("value2"),
+						{
+							Key:   "key2",
+							Value: []byte("value2"),
 						},
 					},
 				},
@@ -52,11 +56,13 @@ func TestMessageCarrier_Get(t *testing.T) {
 			args{
 				&kafka.Message{
 					Headers: []kafka.Header{
-						{"key1",
-							[]byte("value1"),
+						{
+							Key:   "key1",
+							Value: []byte("value1"),
 						},
-						{"key2",
-							[]byte("value2"),
+						{
+							Key:   "key2",
+							Value: []byte("value2"),
 						},
 					},
 				},
@@ -100,8 +106,9 @@ func TestMessageCarrier_Set(t *testing.T) {
 			args{
 				&kafka.Message{
 					Headers: []kafka.Header{
-						{"key1",
-							[]byte("value1"),
+						{
+							Key:   "key1",
+							Value: []byte("value1"),
 						},
 					},
 				},
@@ -114,8 +121,9 @@ func TestMessageCarrier_Set(t *testing.T) {
 			args{
 				&kafka.Message{
 					Headers: []kafka.Header{
-						{"key1",
-							[]byte("value1"),
+						{
+							Key:   "key1",
+							Value: []byte("value1"),
 						},
 					},
 				},
@@ -158,14 +166,17 @@ func TestMessageCarrier_Keys(t *testing.T) {
 			args{
 				&kafka.Message{
 					Headers: []kafka.Header{
-						{"key1",
-							[]byte("value1"),
+						{
+							Key:   "key1",
+							Value: []byte("value1"),
 						},
-						{"key2",
-							[]byte("value2"),
+						{
+							Key:   "key2",
+							Value: []byte("value2"),
 						},
-						{"key3",
-							[]byte("value3"),
+						{
+							Key:   "key3",
+							Value: []byte("value3"),
 						},
 					},
 				},

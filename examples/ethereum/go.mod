@@ -2,6 +2,8 @@ module github.com/nakji-network/connector/examples/ethereum
 
 go 1.19
 
+replace github.com/nakji-network/connector => ../../
+
 require (
 	github.com/ethereum/go-ethereum v1.10.15
 	github.com/nakji-network/connector v0.0.1-beta.1.0.20221219031837-67482bfe4f0e

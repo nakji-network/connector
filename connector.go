@@ -312,10 +312,43 @@ func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.M
 
 	tt := c.buildTopicTypes(msgType, protos...)
 
-	err := protoregistry.RegisterDynamicTopics(c.protoRegistryHost, tt, msgType)
-	if err != nil {
-		log.Fatal().Err(err).Msg("failed to register dynamic topics")
-	}
+	// retry it with exponential decay
+	go func() {
+		// 1 hour
+		const maxBackoffDuration = 3600
+		const maxRetry = 30
+
+		retry := 0
+		backoff := 1
+		backoffDuration := time.Duration(backoff) * time.Second
+
+		timer := time.NewTimer(backoffDuration)
+		defer timer.Stop()
+
+		for retry < maxRetry {
+			timer.Reset(backoffDuration)
+
+			select {
+			case t := <-timer.C:
+				err := protoregistry.RegisterDynamicTopics(c.protoRegistryHost, tt, msgType)
+				if err != nil {
+					log.Error().Err(err).Time("time", t).Msg("failed to register dynamic topics, retrying...")
+
+					retry++
+					backoff *= 4
+					if backoff > maxBackoffDuration {
+						backoff = maxBackoffDuration
+					}
+					backoffDuration = time.Duration(backoff) * time.Second
+				} else {
+					log.Info().Msg("successfully registered dynamic topics")
+					return
+				}
+			}
+		}
+		// crash on purpose
+		log.Fatal().Msg("reached the max time of retry, protoregistry is unavailable")
+	}()
 }
 
 func (c *Connector) buildTopicTypes(msgType kafkautils.MsgType, protos ...proto.Message) protoregistry.TopicTypes {
