@@ -316,16 +316,14 @@ func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.M
 	go func() {
 		// 1 hour
 		const maxBackoffDuration = 3600
-		const maxRetry = 30
 
-		retry := 0
 		backoff := 1
 		backoffDuration := time.Duration(backoff) * time.Second
 
 		timer := time.NewTimer(backoffDuration)
 		defer timer.Stop()
 
-		for retry < maxRetry {
+		for {
 			timer.Reset(backoffDuration)
 
 			select {
@@ -334,7 +332,6 @@ func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.M
 				if err != nil {
 					log.Error().Err(err).Time("time", t).Msg("failed to register dynamic topics, retrying...")
 
-					retry++
 					backoff *= 4
 					if backoff > maxBackoffDuration {
 						backoff = maxBackoffDuration
@@ -346,8 +343,6 @@ func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.M
 				}
 			}
 		}
-		// crash on purpose
-		log.Fatal().Msg("reached the max time of retry, protoregistry is unavailable")
 	}()
 }
 
