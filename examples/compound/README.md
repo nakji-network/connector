@@ -6,7 +6,7 @@ This is an example compound connector that uses `EthereumConnector` as a base co
 
 ## Prerequisites
 
-1. Golang 1.18+
+1. Golang 1.20+
 2. Docker
 3. protoc
 4. protoc-gen-go
