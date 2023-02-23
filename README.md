@@ -23,3 +23,7 @@ The library handles:
 Connector examples are in [examples/](examples).
 
 You can read more documentation on this library in the [Nakji Documentation](https://docs.nakji.network).
+
+## License
+
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT) - see the [LICENSE.md](LICENSE.md) file for details.
