@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -34,7 +34,7 @@ func RegisterDynamicTopics(host string, topicTypes map[string]proto.Message, msg
 	}
 	defer res.Body.Close()
 
-	b, err = ioutil.ReadAll(res.Body)
+	b, err = io.ReadAll(res.Body)
 	if err != nil {
 		return err
 	}

@@ -315,16 +315,14 @@ func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.M
 	// retry it with exponential decay
 	go func() {
 		// 1 hour
-		const maxBackoffDuration = 3600
+		const maxBackoffDuration = 3600 * time.Second
+		backoff := 1 * time.Second
 
-		backoff := 1
-		backoffDuration := time.Duration(backoff) * time.Second
-
-		timer := time.NewTimer(backoffDuration)
+		timer := time.NewTimer(backoff)
 		defer timer.Stop()
 
 		for {
-			timer.Reset(backoffDuration)
+			timer.Reset(backoff)
 
 			select {
 			case t := <-timer.C:
@@ -336,7 +334,6 @@ func (c *Connector) RegisterProtos(msgType kafkautils.MsgType, protos ...proto.M
 					if backoff > maxBackoffDuration {
 						backoff = maxBackoffDuration
 					}
-					backoffDuration = time.Duration(backoff) * time.Second
 				} else {
 					log.Info().Msg("successfully registered dynamic topics")
 					return
