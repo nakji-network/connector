@@ -43,7 +43,7 @@ const (
 )
 
 // NewConnector returns an evm-compatible connector connected to websockets RPC
-func NewConnector(ctx context.Context, addresses []common.Address, chain string, opts ...connector.Option) *Connector {
+func NewConnectorWithQuery(ctx context.Context, query ethereum.FilterQuery, chain string, opts ...connector.Option) *Connector {
 	c, err := connector.NewConnector(opts...)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to instantiate nakji connector")
@@ -69,7 +69,7 @@ func NewConnector(ctx context.Context, addresses []common.Address, chain string,
 		log.Fatal().Err(err).Msg("RPC connection error")
 	}
 
-	sub, err := NewSubscription(client, chain, addresses)
+	sub, err := NewSubscriptionWithQuery(client, chain, query)
 	if err != nil {
 		log.Fatal().Err(err).Str("chain", chain).Msg("subscription error")
 	}
@@ -79,6 +79,15 @@ func NewConnector(ctx context.Context, addresses []common.Address, chain string,
 		Client:    client,
 		Sub:       sub,
 	}
+}
+
+// NewConnector returns an evm-compatible connector connected to websockets RPC
+func NewConnector(ctx context.Context, addresses []common.Address, chain string, opts ...connector.Option) *Connector {
+	q := ethereum.FilterQuery{
+		Addresses: addresses,
+	}
+
+	return NewConnectorWithQuery(ctx, q, chain, opts...)
 }
 
 // ChunkedSubscribeFilterLogs allows to subscribe to addresses in chunks to avoid memory issues.
@@ -186,11 +195,7 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 	return failedQueries, nil
 }
 
-// BatchedFilterLogs queries the blockchain for past events in batches.
-// It slices addresses and total number of blocks with pre-defined batch size.
-// The results are later fed into a log chan that was provided by the caller.
-// Failed query intervals are retried after a backoff period, increased exponentially.
-func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, backoff time.Duration) {
+func BatchedFilterLogsWithQuery(ctx context.Context, client ETHClient, query ethereum.FilterQuery, logChan chan<- types.Log, backoff time.Duration) {
 	if backoff == 0 {
 		backoff = initialBackoffDuration
 	} else if backoff > maxBackoffDuration {
@@ -198,33 +203,44 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 	}
 
 	//	Slice and dice whole block interval and smart contract address count so that they fit into predefined maximums.
-	if toBlock-fromBlock > blockChunkSize {
-		BatchedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, backoff)
-		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, backoff)
+	if query.ToBlock.Uint64()-query.FromBlock.Uint64() > blockChunkSize {
+		q1 := query
+		q1.FromBlock = big.NewInt(int64(query.ToBlock.Uint64() - blockChunkSize))
+		BatchedFilterLogsWithQuery(ctx, client, q1, logChan, backoff)
+
+		q2 := query
+		q2.ToBlock = big.NewInt(int64(query.ToBlock.Uint64() - blockChunkSize - 1))
+		BatchedFilterLogsWithQuery(ctx, client, q2, logChan, backoff)
 		return
 	}
 
-	if len(addresses) > addressChunkSize {
-		BatchedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, backoff)
-		BatchedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, backoff)
+	if len(query.Addresses) > addressChunkSize {
+		q1 := query
+		q1.Addresses = query.Addresses[:addressChunkSize]
+		BatchedFilterLogsWithQuery(ctx, client, q1, logChan, backoff)
+
+		q2 := query
+		q2.Addresses = query.Addresses[addressChunkSize:]
+		BatchedFilterLogsWithQuery(ctx, client, q2, logChan, backoff)
 		return
 	}
 
-	log.Debug().Uint64("from", fromBlock).Uint64("to", toBlock).Msg("retrieving historical events...")
-
-	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(int64(fromBlock)),
-		ToBlock:   big.NewInt(int64(toBlock)),
-		Addresses: addresses,
-	}
+	log.Debug().Uint64("from", query.FromBlock.Uint64()).Uint64("to", query.ToBlock.Uint64()).Msg("retrieving historical events...")
 
 	logs, err := client.FilterLogs(ctx, query)
 	if err != nil {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(backoff):
-			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Str("backoff", backoff.String()).Msg("retrying interval")
+		default:
+			time.Sleep(backoff)
+			log.Warn().Err(err).Uint64("from", query.FromBlock.Uint64()).Uint64("to", query.ToBlock.Uint64()).Str("backoff", backoff.String()).Msg("retrying interval")
+
+			// The program will repeat the query to same block at max backoff until resolved or loop infinitely.
+			if query.FromBlock.Cmp(query.ToBlock) == 0 {
+				BatchedFilterLogsWithQuery(ctx, client, query, logChan, backoff<<1)
+				return
+			}
 
 			// Node providers may refuse the request if they deem it too large.
 			// It could be block range, number of events or just response size.
@@ -232,8 +248,13 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			// If the problem is with some specific block range,
 			// this will also process the good blocks in a binary search fashion.
 			mid := (query.FromBlock.Uint64() + query.ToBlock.Uint64()) / 2
-			BatchedFilterLogs(ctx, client, addresses, fromBlock, mid, logChan, backoff<<1)
-			BatchedFilterLogs(ctx, client, addresses, mid+1, toBlock, logChan, backoff<<1)
+			q1 := query
+			q1.ToBlock = big.NewInt(int64(mid))
+			BatchedFilterLogsWithQuery(ctx, client, q1, logChan, backoff<<1)
+
+			q2 := query
+			q2.FromBlock = big.NewInt(int64(mid + 1))
+			BatchedFilterLogsWithQuery(ctx, client, q1, logChan, backoff<<1)
 			return
 		}
 	}
@@ -241,6 +262,20 @@ func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 	for _, l := range logs {
 		logChan <- l
 	}
+}
+
+// BatchedFilterLogs queries the blockchain for past events in batches.
+// It slices addresses and total number of blocks with pre-defined batch size.
+// The results are later fed into a log chan that was provided by the caller.
+// Failed query intervals are retried after a backoff period, increased exponentially.
+func BatchedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, backoff time.Duration) {
+	q := ethereum.FilterQuery{
+		FromBlock: big.NewInt(int64(fromBlock)),
+		ToBlock:   big.NewInt(int64(toBlock)),
+		Addresses: addresses,
+	}
+
+	BatchedFilterLogsWithQuery(ctx, client, q, logChan, backoff)
 }
 
 // DEPRECATED, this function will be removed in a future release. Please use HistoricalEvents instead.
@@ -412,22 +447,32 @@ func HistoricalEventsWithQueryParams(ctx context.Context, client *ethclient.Clie
 	}
 }
 
-// BackfillEvents queries past blocks for the events emitted by the given contract addresses.
-// These events are provided in a channel and ready to be consumed by the caller.
-func BackfillEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) <-chan types.Log {
+func BackfillEventsWithQuery(ctx context.Context, client *ethclient.Client, query ethereum.FilterQuery) <-chan types.Log {
 	ch := make(chan types.Log, 1000)
 
-	if fromBlock >= toBlock {
+	if query.FromBlock.Cmp(query.ToBlock) >= 0 {
 		close(ch)
 		return ch
 	}
 
 	go func(logs chan types.Log) {
-		BatchedFilterLogs(ctx, client, addresses, fromBlock, toBlock, logs, 0)
+		BatchedFilterLogsWithQuery(ctx, client, query, logs, 0)
 		close(logs)
 	}(ch)
 
 	return ch
+}
+
+// BackfillEvents queries past blocks for the events emitted by the given contract addresses.
+// These events are provided in a channel and ready to be consumed by the caller.
+func BackfillEvents(ctx context.Context, client *ethclient.Client, addresses []common.Address, fromBlock uint64, toBlock uint64) <-chan types.Log {
+	q := ethereum.FilterQuery{
+		FromBlock: big.NewInt(int64(fromBlock)),
+		ToBlock:   big.NewInt(int64(toBlock)),
+		Addresses: addresses,
+	}
+
+	return BackfillEventsWithQuery(ctx, client, q)
 }
 
 // BackfillEventsWithQueryParams queries past blocks for the events emitted by the given contract addresses.
@@ -445,16 +490,25 @@ func BackfillEventsWithQueryParams(ctx context.Context, client *ethclient.Client
 		return ch, err
 	}
 
-	if fromBlock > 0 && numBlocks > 0 {
-		if fromBlock+numBlocks > latestBlockNumber {
-			return BackfillEvents(ctx, client, addresses, fromBlock, latestBlockNumber), nil
-		}
-		return BackfillEvents(ctx, client, addresses, fromBlock, fromBlock+numBlocks), nil
-	} else if fromBlock > 0 && numBlocks == 0 {
-		return BackfillEvents(ctx, client, addresses, fromBlock, latestBlockNumber), nil
-	} else if fromBlock == 0 && numBlocks > 0 {
-		return BackfillEvents(ctx, client, addresses, latestBlockNumber-numBlocks, latestBlockNumber), nil
+	var f uint64
+	if fromBlock == 0 && numBlocks > 0 {
+		f = latestBlockNumber - numBlocks
+	} else {
+		f = fromBlock
 	}
 
-	return ch, nil
+	var t uint64
+	if (fromBlock > 0 && numBlocks > 0) && (fromBlock+numBlocks < latestBlockNumber) {
+		t = fromBlock + numBlocks
+	} else {
+		t = latestBlockNumber
+	}
+
+	q := ethereum.FilterQuery{
+		FromBlock: big.NewInt(int64(f)),
+		ToBlock:   big.NewInt(int64(t)),
+		Addresses: addresses,
+	}
+
+	return BackfillEventsWithQuery(ctx, client, q), nil
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/nakji-network/connector/kafkautils"
 	"github.com/nakji-network/connector/monitor"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -49,9 +50,9 @@ type Subscription struct {
 	resubscribe chan bool      //	Channel to signal for resubscribing to logs
 
 	//	Blockchain chain
-	chain     string
-	addresses []common.Address
-	client    *ethclient.Client
+	chain  string
+	query  ethereum.FilterQuery
+	client *ethclient.Client
 
 	//	Network subscription
 	headers           chan *types.Header //	Block header channel
@@ -71,12 +72,11 @@ type Log struct {
 	Baggage baggage.Baggage
 }
 
-// NewSubscription	connects to given endpoints and subscribes to blockchain.
-func NewSubscription(client *ethclient.Client, chain string, addresses []common.Address) (*Subscription, error) {
+func NewSubscriptionWithQuery(client *ethclient.Client, chain string, q ethereum.FilterQuery) (*Subscription, error) {
 	s := Subscription{
-		addresses:        addresses,
 		client:           client,
 		chain:            chain,
+		query:            q,
 		done:             make(chan struct{}),
 		interrupt:        make(chan os.Signal, 1),
 		resubscribe:      make(chan bool, 1),
@@ -109,6 +109,15 @@ func NewSubscription(client *ethclient.Client, chain string, addresses []common.
 	return &s, nil
 }
 
+// NewSubscription	connects to given endpoints and subscribes to blockchain.
+func NewSubscription(client *ethclient.Client, chain string, addresses []common.Address) (*Subscription, error) {
+	q := ethereum.FilterQuery{
+		Addresses: addresses,
+	}
+
+	return NewSubscriptionWithQuery(client, chain, q)
+}
+
 func (s *Subscription) Subscribe(ctx context.Context) {
 	log.Info().Msg("subscribing to headers and logs")
 
@@ -122,7 +131,7 @@ func (s *Subscription) Subscribe(ctx context.Context) {
 
 func (s *Subscription) AddAddress(address common.Address, msgType kafkautils.MsgType) {
 	log.Debug().Str("address", address.Hex()).Msg("adding new address")
-	s.addresses = append(s.addresses, address)
+	s.query.Addresses = append(s.query.Addresses, address)
 	if msgType == kafkautils.MsgTypeFct {
 		s.resubscribe <- true
 	}
@@ -221,7 +230,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 					for bfLog := range backfillLogs {
 						s.inLogs <- bfLog
 					}
-				}(ctx, s.client, s.addresses, s.latestBlockNumber.Uint64(), header.Number.Uint64())
+				}(ctx, s.client, s.query.Addresses, s.latestBlockNumber.Uint64(), header.Number.Uint64())
 			}
 
 			s.cache.ContainsOrAdd(header.Hash().Hex(), header.Time)
@@ -239,7 +248,7 @@ func (s *Subscription) subscribeHeaders(ctx context.Context) {
 func (s *Subscription) subscribeLogs(ctx context.Context) {
 	log.Debug().Str("chain", s.chain).Msg("subscribing to event logs..")
 
-	subs, err := ChunkedSubscribeFilterLogs(ctx, s.client, s.addresses, s.inLogs, s.inErr, nil)
+	subs, err := ChunkedSubscribeFilterLogs(ctx, s.client, s.query.Addresses, s.inLogs, s.inErr, nil)
 	if err != nil {
 		log.Fatal().Err(err).Msg("failed to subscribe to event logs")
 	}
