@@ -490,18 +490,14 @@ func BackfillEventsWithQueryParams(ctx context.Context, client *ethclient.Client
 		return ch, err
 	}
 
-	var f uint64
+	f := fromBlock
 	if fromBlock == 0 && numBlocks > 0 {
 		f = latestBlockNumber - numBlocks
-	} else {
-		f = fromBlock
 	}
 
-	var t uint64
+	t := latestBlockNumber
 	if (fromBlock > 0 && numBlocks > 0) && (fromBlock+numBlocks < latestBlockNumber) {
 		t = fromBlock + numBlocks
-	} else {
-		t = latestBlockNumber
 	}
 
 	q := ethereum.FilterQuery{
