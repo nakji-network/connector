@@ -103,7 +103,7 @@ func NewSubscriptionWithQuery(client *ethclient.Client, chain string, q ethereum
 
 	go func() {
 		<-s.interrupt
-		close(s.done)
+		s.Close()
 	}()
 
 	return &s, nil
