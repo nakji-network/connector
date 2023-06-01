@@ -2,7 +2,7 @@
 package connector
 
 import (
-	"io/ioutil"
+	"os"
 
 	"github.com/Masterminds/semver"
 	"github.com/rs/zerolog/log"
@@ -10,17 +10,53 @@ import (
 )
 
 type manifest struct {
-	Name    string
-	Author  string
-	Version version
+	Name         string
+	Author       string
+	Version      version
+	Url          string `yaml:"url,omitempty"`
+	PrimaryColor string `yaml:"primaryColor,omitempty"`
+	Links        link   `yaml:"links,omitempty"`
+}
+
+type link struct {
+	Github   string `yaml:"github,omitempty"`
+	Twitter  string `yaml:"twitter,omitempty"`
+	Discord  string `yaml:"discord,omitempty"`
+	Telegram string `yaml:"telegram,omitempty"`
+	Medium   string `yaml:"medium,omitempty"`
+}
+
+type ManifestOption func(*manifest)
+
+func parseManifestOptions(m *manifest, options ...ManifestOption) {
+	for _, option := range options {
+		option(m)
+	}
+}
+
+func WithUrl(url string) ManifestOption {
+	return func(m *manifest) {
+		m.Url = url
+	}
+}
+
+func WithPrimaryColor(primaryColor string) ManifestOption {
+	return func(m *manifest) {
+		m.PrimaryColor = primaryColor
+	}
+}
+
+func WithLinks(links link) ManifestOption {
+	return func(m *manifest) {
+		m.Links = links
+	}
 }
 
 // TODO: tell user to use embed to embed the manifest.yaml file or else they'll have to manually keep the file with the exe
-
 func LoadManifest() *manifest {
 	log.Info().Msg("Loading Manifest")
 
-	yfile, err := ioutil.ReadFile("manifest.yaml")
+	yfile, err := os.ReadFile("manifest.yaml")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to open file manifest.yaml.")
 		return nil
@@ -46,15 +82,19 @@ func LoadManifest() *manifest {
 	return m
 }
 
-func NewManifest(name string, author string, ver string) *manifest {
+func NewManifest(name string, author string, ver string, options ...ManifestOption) *manifest {
 	nv, err := semver.NewVersion(ver)
 	if err != nil {
 		log.Fatal().Err(err).Msg("invalid version")
 	}
 
-	return &manifest{
+	m := &manifest{
 		Name:    name,
 		Author:  author,
 		Version: version{nv},
 	}
+
+	parseManifestOptions(m, options...)
+
+	return m
 }
