@@ -56,7 +56,7 @@ func WithLinks(links link) ManifestOption {
 func LoadManifest() *Manifest {
 	log.Info().Msg("Loading Manifest")
 
-	yfile, err := os.ReadFile("Manifest.yaml")
+	yfile, err := os.ReadFile("manifest.yaml")
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to open file Manifest.yaml.")
 		return nil
