@@ -45,7 +45,7 @@ func TestLoadManifest(t *testing.T) {
 func TestNewManifest(t *testing.T) {
 	urlOption := WithUrl("https://nakji.network/")
 
-	linksOptions := WithLinks(link{
+	linksOptions := WithLinks(Link{
 		Github:  "https://github.com/nakji-network",
 		Discord: "https://discord.gg/nakji-network",
 	})

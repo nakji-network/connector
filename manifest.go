@@ -15,10 +15,10 @@ type Manifest struct {
 	Version      version
 	Url          string `yaml:"url,omitempty"`
 	PrimaryColor string `yaml:"primaryColor,omitempty"`
-	Links        link   `yaml:"links,omitempty"`
+	Links        Link   `yaml:"links,omitempty"`
 }
 
-type link struct {
+type Link struct {
 	Github   string `yaml:"github,omitempty"`
 	Twitter  string `yaml:"twitter,omitempty"`
 	Discord  string `yaml:"discord,omitempty"`
@@ -46,7 +46,7 @@ func WithPrimaryColor(primaryColor string) ManifestOption {
 	}
 }
 
-func WithLinks(links link) ManifestOption {
+func WithLinks(links Link) ManifestOption {
 	return func(m *Manifest) {
 		m.Links = links
 	}
@@ -54,11 +54,11 @@ func WithLinks(links link) ManifestOption {
 
 // TODO: tell user to use embed to embed the manifest.yaml file or else they'll have to manually keep the file with the exe
 func LoadManifest() *Manifest {
-	log.Info().Msg("Loading Manifest")
+	log.Info().Msg("Loading manifest")
 
 	yfile, err := os.ReadFile("manifest.yaml")
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to open file Manifest.yaml.")
+		log.Warn().Err(err).Msg("Failed to open file manifest.yaml.")
 		return nil
 	}
 
@@ -66,18 +66,18 @@ func LoadManifest() *Manifest {
 
 	err2 := yaml.Unmarshal(yfile, m)
 	if err2 != nil {
-		log.Fatal().Err(err2).Msg("Failed to read yaml from Manifest.yaml.")
+		log.Fatal().Err(err2).Msg("Failed to read yaml from manifest.yaml.")
 	}
 
 	if m.Name == "" || m.Author == "" || m.Version.Version == nil {
-		log.Fatal().Msg("Missing name, author, and version fields from Manifest.yaml.")
+		log.Fatal().Msg("Missing name, author, and version fields from manifest.yaml.")
 	}
 
 	log.Info().
 		Str("name", m.Name).
 		Str("author", m.Author).
 		Str("version", m.Version.String()).
-		Msg("Manifest loaded")
+		Msg("manifest loaded")
 
 	return m
 }
