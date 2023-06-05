@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type manifest struct {
+type Manifest struct {
 	Name         string
 	Author       string
 	Version      version
@@ -26,51 +26,51 @@ type link struct {
 	Medium   string `yaml:"medium,omitempty"`
 }
 
-type ManifestOption func(*manifest)
+type ManifestOption func(*Manifest)
 
-func parseManifestOptions(m *manifest, options ...ManifestOption) {
+func parseManifestOptions(m *Manifest, options ...ManifestOption) {
 	for _, option := range options {
 		option(m)
 	}
 }
 
 func WithUrl(url string) ManifestOption {
-	return func(m *manifest) {
+	return func(m *Manifest) {
 		m.Url = url
 	}
 }
 
 func WithPrimaryColor(primaryColor string) ManifestOption {
-	return func(m *manifest) {
+	return func(m *Manifest) {
 		m.PrimaryColor = primaryColor
 	}
 }
 
 func WithLinks(links link) ManifestOption {
-	return func(m *manifest) {
+	return func(m *Manifest) {
 		m.Links = links
 	}
 }
 
 // TODO: tell user to use embed to embed the manifest.yaml file or else they'll have to manually keep the file with the exe
-func LoadManifest() *manifest {
+func LoadManifest() *Manifest {
 	log.Info().Msg("Loading Manifest")
 
-	yfile, err := os.ReadFile("manifest.yaml")
+	yfile, err := os.ReadFile("Manifest.yaml")
 	if err != nil {
-		log.Warn().Err(err).Msg("Failed to open file manifest.yaml.")
+		log.Warn().Err(err).Msg("Failed to open file Manifest.yaml.")
 		return nil
 	}
 
-	m := new(manifest)
+	m := new(Manifest)
 
 	err2 := yaml.Unmarshal(yfile, m)
 	if err2 != nil {
-		log.Fatal().Err(err2).Msg("Failed to read yaml from manifest.yaml.")
+		log.Fatal().Err(err2).Msg("Failed to read yaml from Manifest.yaml.")
 	}
 
 	if m.Name == "" || m.Author == "" || m.Version.Version == nil {
-		log.Fatal().Msg("Missing name, author, and version fields from manifest.yaml.")
+		log.Fatal().Msg("Missing name, author, and version fields from Manifest.yaml.")
 	}
 
 	log.Info().
@@ -82,13 +82,13 @@ func LoadManifest() *manifest {
 	return m
 }
 
-func NewManifest(name string, author string, ver string, options ...ManifestOption) *manifest {
+func NewManifest(name string, author string, ver string, options ...ManifestOption) *Manifest {
 	nv, err := semver.NewVersion(ver)
 	if err != nil {
 		log.Fatal().Err(err).Msg("invalid version")
 	}
 
-	m := &manifest{
+	m := &Manifest{
 		Name:    name,
 		Author:  author,
 		Version: version{nv},
