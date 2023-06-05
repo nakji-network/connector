@@ -1,0 +1,16 @@
+# This is a sample manifest.yaml
+
+## Required fields
+name: ethereum
+author: nakji
+version: 0.0.0
+
+## Optional fields
+primaryColor: "#1c1d26"
+url: "https://nakji.network/"
+links:
+  github: "https://github.com/nakji-network"
+  twitter: "https://twitter.com/nakji-network"
+  discord: "https://discord.gg/nakji-network"
+  telegram: "https://t.me/nakji-network"
+  medium: "https://medium.com/nakji-network"

@@ -32,7 +32,7 @@ type Connector struct {
 	consumerStarted   bool
 	env               kafkautils.Env
 	kafkaUrl          string
-	manifest          *manifest
+	manifest          *Manifest
 	producerStarted   bool
 	protoRegistryHost string
 	isBackfill        bool
@@ -119,7 +119,7 @@ func parseOptions(c *Connector, options ...Option) {
 	}
 }
 
-func WithManifest(m *manifest) Option {
+func WithManifest(m *Manifest) Option {
 	return func(c *Connector) {
 		c.manifest = m
 	}
