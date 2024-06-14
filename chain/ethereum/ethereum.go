@@ -95,10 +95,6 @@ func NewConnector(ctx context.Context, addresses []common.Address, chain string,
 // Resulting `ethereum.Subsription` objects are returned as an array for later use by the caller.
 // Default chunksize = 7350 for quiknode.
 func ChunkedSubscribeFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, logChan chan<- types.Log, errChan chan<- error, subs []ethereum.Subscription) ([]ethereum.Subscription, error) {
-	if subs == nil {
-		subs = make([]ethereum.Subscription, 0)
-	}
-
 	if len(addresses) > addressChunkSize {
 		s, err := ChunkedSubscribeFilterLogs(ctx, client, addresses[:addressChunkSize], logChan, errChan, subs)
 		if err != nil {
@@ -134,24 +130,20 @@ func ChunkedSubscribeFilterLogs(ctx context.Context, client ETHClient, addresses
 func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common.Address, fromBlock, toBlock uint64, logChan chan<- types.Log, failedQueries []ethereum.FilterQuery) ([]ethereum.FilterQuery, error) {
 	var err error
 
-	if failedQueries == nil {
-		failedQueries = make([]ethereum.FilterQuery, 0)
+	if toBlock-fromBlock > blockChunkSize {
+		failedQueries, err = ChunkedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, failedQueries)
+		if err != nil {
+			log.Warn().Err(err).Uint64("from", toBlock-blockChunkSize).Uint64("to", toBlock).Msg("skipping failed backfill interval...")
+		}
+		return ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, failedQueries)
 	}
 
 	if len(addresses) > addressChunkSize {
 		failedQueries, err = ChunkedFilterLogs(ctx, client, addresses[:addressChunkSize], fromBlock, toBlock, logChan, failedQueries)
 		if err != nil {
-			return nil, err
+			log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Msg("skipping failed backfill interval...")
 		}
 		return ChunkedFilterLogs(ctx, client, addresses[addressChunkSize:], fromBlock, toBlock, logChan, failedQueries)
-	}
-
-	if toBlock-fromBlock > blockChunkSize {
-		failedQueries, err = ChunkedFilterLogs(ctx, client, addresses, toBlock-blockChunkSize, toBlock, logChan, failedQueries)
-		if err != nil {
-			return nil, err
-		}
-		return ChunkedFilterLogs(ctx, client, addresses, fromBlock, toBlock-blockChunkSize-1, logChan, failedQueries)
 	}
 
 	log.Debug().Uint64("from", fromBlock).Uint64("to", toBlock).Msg("retrieving historical events...")
@@ -170,7 +162,6 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 			log.Error().Err(err).Msg("hit RPC rate limit")
 			return nil, err
 		}
-		log.Warn().Err(err).Uint64("from", fromBlock).Uint64("to", toBlock).Msg("skipping failed backfill interval...")
 
 		// Node providers may refuse the request if they deem it too large.
 		// It could be block range, number of events or just response size.
@@ -192,7 +183,7 @@ func ChunkedFilterLogs(ctx context.Context, client ETHClient, addresses []common
 		logChan <- l
 	}
 
-	return failedQueries, nil
+	return failedQueries, err
 }
 
 func BatchedFilterLogsWithQuery(ctx context.Context, client ETHClient, query ethereum.FilterQuery, logChan chan<- types.Log, backoff time.Duration) {
